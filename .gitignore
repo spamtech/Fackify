@@ -4,15 +4,12 @@ node_modules/
 
 # Environment variables
 .env
-.env.local
-.env.development
-.env.production
-**/.env
-**/.env.local
+.env.*
+!.env.example
 
 # Build output
-dist/
-build/
+frontend/dist/
+backend/dist/
 
 # Logs
 *.log
@@ -24,13 +21,16 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# IDE
+# Editor
 .vscode/
 .idea/
 
 # Temporary files
 *.tmp
 *.temp
+
+# Vite
+.vite/
 
 # Coverage
 coverage/

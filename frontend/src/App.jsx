@@ -1,5 +1,10 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
 
 import { AuthProvider } from './context/AuthContext';
 import { PlayerProvider } from './context/PlayerContext';
@@ -13,64 +18,184 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import LikedSongs from './pages/LikedSongs';
 import Playlists from './pages/Playlists';
+import Notifications from './pages/Notifications';
+
+/* ============================================================
+   ARTIST PAGES
+============================================================ */
+
+import Artists from './pages/Artists';
+import ArtistDetails from './pages/ArtistDetails';
 
 import AdminDashboard from './pages/AdminDashboard';
 
 export default function App() {
   return (
     <BrowserRouter>
+
       <AuthProvider>
+
         <PlayerProvider>
 
           <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
 
+            {/* =========================
+                NAVBAR
+            ========================== */}
+
             <Navbar />
 
+
+            {/* =========================
+                MAIN CONTENT
+            ========================== */}
+
             <main className="flex-1">
+
               <Routes>
 
-                {/* Public */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+                {/* ==================================================
+                    PUBLIC ROUTES
+                ================================================== */}
 
-                {/* Redirect */}
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route
+                  path="/login"
+                  element={<Login />}
+                />
 
-                {/* User + Admin */}
+                <Route
+                  path="/register"
+                  element={<Register />}
+                />
+
+
+                {/* ==================================================
+                    HOME REDIRECT
+                ================================================== */}
+
+                <Route
+                  path="/"
+                  element={
+                    <Navigate
+                      to="/dashboard"
+                      replace
+                    />
+                  }
+                />
+
+
+                {/* ==================================================
+                    USER + ADMIN ROUTES
+                ================================================== */}
+
                 <Route
                   element={
-                    <ProtectedRoute allowedRoles={['user', 'admin']} />
+                    <ProtectedRoute
+                      allowedRoles={['user', 'admin']}
+                    />
                   }
                 >
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/liked" element={<LikedSongs />} />
-                  <Route path="/playlists" element={<Playlists />} />
+
+                  {/* Dashboard */}
+
+                  <Route
+                    path="/dashboard"
+                    element={<Dashboard />}
+                  />
+
+
+                  {/* Liked Songs */}
+
+                  <Route
+                    path="/liked"
+                    element={<LikedSongs />}
+                  />
+
+
+                  {/* Playlists */}
+
+                  <Route
+                    path="/playlists"
+                    element={<Playlists />}
+                  />
+
+
+                  {/* Notifications */}
+
+                  <Route
+                    path="/notifications"
+                    element={<Notifications />}
+                  />
+
+
+                  {/* ==================================================
+                      ARTISTS
+                  ================================================== */}
+
+                  <Route
+                    path="/artists"
+                    element={<Artists />}
+                  />
+
+                  <Route
+                    path="/artists/:id"
+                    element={<ArtistDetails />}
+                  />
+
                 </Route>
 
-                {/* Admin only */}
+
+                {/* ==================================================
+                    ADMIN ONLY
+                ================================================== */}
+
                 <Route
                   element={
-                    <ProtectedRoute allowedRoles={['admin']} />
+                    <ProtectedRoute
+                      allowedRoles={['admin']}
+                    />
                   }
                 >
-                  <Route path="/admin" element={<AdminDashboard />} />
+
+                  <Route
+                    path="/admin"
+                    element={<AdminDashboard />}
+                  />
+
                 </Route>
 
-                {/* Unknown route */}
+
+                {/* ==================================================
+                    UNKNOWN ROUTE
+                ================================================== */}
+
                 <Route
                   path="*"
-                  element={<Navigate to="/dashboard" replace />}
+                  element={
+                    <Navigate
+                      to="/dashboard"
+                      replace
+                    />
+                  }
                 />
 
               </Routes>
+
             </main>
+
+
+            {/* ==================================================
+                GLOBAL MEDIA PLAYER
+            ================================================== */}
 
             <MediaPlayer />
 
           </div>
 
         </PlayerProvider>
+
       </AuthProvider>
+
     </BrowserRouter>
   );
 }

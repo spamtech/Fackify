@@ -1,12 +1,64 @@
 import express from 'express';
-import { getAdminActivity, updateUserRole } from '../controllers/adminController.js';
-import { protect, adminOnly } from '../middleware/authMiddleware.js';
+
+import {
+  getAdminStats,
+  getAllUsers,
+  getUserDetails,
+  updateUserRole,
+  getAllLikesActivity,
+  updateUserBlockStatus,
+  deleteUser,
+} from '../controllers/adminController.js';
+
+import {
+  protect,
+  adminOnly,
+} from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+
+// All admin routes
 router.use(protect, adminOnly);
 
-router.get('/activity', getAdminActivity);
-router.patch('/users/:id/role', updateUserRole);
+
+// Dashboard
+router.get('/stats', getAdminStats);
+
+
+// Users
+router.get('/users', getAllUsers);
+
+router.get(
+  '/users/:id/details',
+  getUserDetails
+);
+
+router.put(
+  '/users/:id/role',
+  updateUserRole
+);
+
+
+// Block / Unblock
+router.put(
+  '/users/:id/block',
+  updateUserBlockStatus
+);
+
+
+// Delete
+router.delete(
+  '/users/:id',
+  deleteUser
+);
+
+
+// Likes
+router.get(
+  '/likes-activity',
+  getAllLikesActivity
+);
+
 
 export default router;

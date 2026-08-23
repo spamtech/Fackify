@@ -1,256 +1,2127 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  Plus,
+  Music2,
+  Play,
+  MoreHorizontal,
+  Trash2,
+  Pencil,
+  X,
+  Check,
+  Heart,
+  ListMusic,
+  ChevronLeft,
+  Search,
+  Sparkles,
+  Headphones,
+  ShieldCheck,
+  Lock,
+  Globe2,
+} from 'lucide-react';
+
 import api from '../api/axiosInstance';
 import SongCard from '../components/SongCard';
-import { ListMusic, Plus, FolderPlus, Trash2, ArrowLeft, Globe, Lock } from 'lucide-react';
+import { usePlayer } from '../context/PlayerContext';
+
+const DEFAULT_COVER =
+  'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=800&q=80';
 
 export default function Playlists() {
-  const [playlists, setPlaylists] = useState([]);
-  const [activePlaylist, setActivePlaylist] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', isPublic: true });
-  const [creating, setCreating] = useState(false);
+  const {
+    playSong,
+  } = usePlayer();
+
+  // ============================================================
+  // AUTH / USER
+  // ============================================================
+
+  const [currentUser, setCurrentUser] =
+    useState(null);
+
+  const [authLoading, setAuthLoading] =
+    useState(true);
+
+  const isAdmin =
+    currentUser?.role === 'admin';
+
+  // ============================================================
+  // PLAYLIST STATE
+  // ============================================================
+
+  const [playlists, setPlaylists] =
+    useState([]);
+
+  const [selectedPlaylist, setSelectedPlaylist] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [songsLoading, setSongsLoading] =
+    useState(false);
+
+  const [searchTerm, setSearchTerm] =
+    useState('');
+
+  // ============================================================
+  // MODALS
+  // ============================================================
+
+  const [showCreateModal, setShowCreateModal] =
+    useState(false);
+
+  const [showEditModal, setShowEditModal] =
+    useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] =
+    useState(false);
+
+  // ============================================================
+  // FORM
+  // ============================================================
+
+  const [playlistName, setPlaylistName] =
+    useState('');
+
+  const [playlistDescription, setPlaylistDescription] =
+    useState('');
+
+  const [playlistIsPublic, setPlaylistIsPublic] =
+    useState(true);
+
+  // ============================================================
+  // OTHER STATE
+  // ============================================================
+
+  const [actionLoading, setActionLoading] =
+    useState(false);
+
+  const [openMenu, setOpenMenu] =
+    useState(null);
+
+  // ============================================================
+  // GET CURRENT USER
+  // ============================================================
+
+  const fetchCurrentUser = async () => {
+    try {
+      setAuthLoading(true);
+
+      const response =
+        await api.get('/auth/me');
+
+      if (response.data?.success) {
+        setCurrentUser(
+          response.data.user ||
+          response.data.data ||
+          null
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Failed to load current user:',
+        error
+      );
+
+      setCurrentUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // ============================================================
+  // FETCH PLAYLISTS
+  // ============================================================
 
   const fetchPlaylists = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/playlists');
-      if (res.data?.success) {
-        setPlaylists(res.data.playlists || []);
+
+      const response =
+        await api.get('/playlists');
+
+      if (response.data?.success) {
+        setPlaylists(
+          response.data.playlists || []
+        );
+      } else {
+        setPlaylists([]);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(
+        'Failed to load playlists:',
+        error
+      );
+
+      setPlaylists([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPlaylistDetails = async (id) => {
-    try {
-      const res = await api.get(`/playlists/${id}`);
-      if (res.data?.success) {
-        setActivePlaylist(res.data.playlist);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // ============================================================
+  // INITIAL LOAD
+  // ============================================================
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchPlaylists();
   }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    setCreating(true);
+  // ============================================================
+  // FETCH SINGLE PLAYLIST
+  // ============================================================
+
+  const openPlaylist = async (playlist) => {
     try {
-      const res = await api.post('/playlists', form);
-      if (res.data?.success) {
-        setPlaylists((prev) => [res.data.playlist, ...prev]);
-        setShowModal(false);
-        setForm({ name: '', description: '', isPublic: true });
+      setSongsLoading(true);
+      setOpenMenu(null);
+
+      const response =
+        await api.get(
+          `/playlists/${playlist.id}`
+        );
+
+      if (response.data?.success) {
+        setSelectedPlaylist(
+          response.data.playlist
+        );
+      } else {
+        setSelectedPlaylist(playlist);
       }
-    } catch (err) {
-      alert('Failed to create playlist');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleDeletePlaylist = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this playlist?')) return;
-    try {
-      await api.delete(`/playlists/${id}`);
-      setPlaylists((prev) => prev.filter((p) => p.id !== id));
-      if (activePlaylist?.id === id) setActivePlaylist(null);
-    } catch (err) {
-      alert('Failed to delete playlist');
-    }
-  };
-
-  const handleRemoveSong = async (songId) => {
-    try {
-      await api.delete(`/playlists/${activePlaylist.id}/songs/${songId}`);
-      setActivePlaylist((prev) => ({
-        ...prev,
-        songs: prev.songs.filter((s) => s.id !== songId),
-      }));
-      setPlaylists((prev) =>
-        prev.map((p) => (p.id === activePlaylist.id ? { ...p, song_count: Math.max(0, p.song_count - 1) } : p))
+    } catch (error) {
+      console.error(
+        'Failed to load playlist:',
+        error
       );
-    } catch (err) {
-      alert('Failed to remove track');
+
+      setSelectedPlaylist(playlist);
+    } finally {
+      setSongsLoading(false);
     }
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-6 py-8 pb-32">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-            <ListMusic className="w-6 h-6 text-emerald-400" />
-            My Playlists
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Organize and curate your favorite soundscapes</p>
+  // ============================================================
+  // CREATE PLAYLIST
+  // ============================================================
+
+  const handleCreatePlaylist = async (event) => {
+    event.preventDefault();
+
+    if (!playlistName.trim()) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+
+      const payload = {
+        name: playlistName.trim(),
+
+        description:
+          playlistDescription.trim(),
+
+        /*
+         * Only admin visibility is controlled
+         * from this UI.
+         */
+        isPublic: isAdmin
+          ? playlistIsPublic
+          : true,
+      };
+
+      const response =
+        await api.post(
+          '/playlists',
+          payload
+        );
+
+      if (response.data?.success) {
+        const newPlaylist =
+          response.data.playlist;
+
+        setPlaylists((previous) => [
+          newPlaylist,
+          ...previous,
+        ]);
+
+        setPlaylistName('');
+        setPlaylistDescription('');
+        setPlaylistIsPublic(true);
+
+        setShowCreateModal(false);
+
+        /*
+         * Open the newly-created playlist.
+         */
+        if (newPlaylist?.id) {
+          setSelectedPlaylist(
+            newPlaylist
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        'Failed to create playlist:',
+        error
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ============================================================
+  // EDIT PLAYLIST
+  // ============================================================
+
+  const handleEditPlaylist = async (event) => {
+    event.preventDefault();
+
+    if (
+      !selectedPlaylist ||
+      !playlistName.trim()
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+
+      const payload = {
+        name:
+          playlistName.trim(),
+
+        description:
+          playlistDescription.trim(),
+
+        /*
+         * Admin can change visibility.
+         *
+         * For normal users we preserve
+         * the existing visibility.
+         */
+        isPublic: isAdmin
+          ? playlistIsPublic
+          : Boolean(
+              selectedPlaylist.is_public
+            ),
+      };
+
+      const response =
+        await api.put(
+          `/playlists/${selectedPlaylist.id}`,
+          payload
+        );
+
+      if (response.data?.success) {
+        const updatedPlaylist =
+          response.data.playlist;
+
+        /*
+         * Keep existing songs because
+         * the update endpoint may return
+         * an empty songs array.
+         */
+        const finalPlaylist = {
+          ...selectedPlaylist,
+          ...updatedPlaylist,
+          songs:
+            selectedPlaylist.songs ||
+            updatedPlaylist.songs ||
+            [],
+        };
+
+        setSelectedPlaylist(
+          finalPlaylist
+        );
+
+        setPlaylists((previous) =>
+          previous.map((playlist) =>
+            playlist.id ===
+            updatedPlaylist.id
+              ? {
+                  ...playlist,
+                  ...updatedPlaylist,
+                }
+              : playlist
+          )
+        );
+
+        setShowEditModal(false);
+      }
+    } catch (error) {
+      console.error(
+        'Failed to update playlist:',
+        error
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ============================================================
+  // DELETE PLAYLIST
+  // ============================================================
+
+  const handleDeletePlaylist = async () => {
+    if (!selectedPlaylist) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+
+      const response =
+        await api.delete(
+          `/playlists/${selectedPlaylist.id}`
+        );
+
+      if (response.data?.success) {
+        setPlaylists((previous) =>
+          previous.filter(
+            (playlist) =>
+              playlist.id !==
+              selectedPlaylist.id
+          )
+        );
+
+        setSelectedPlaylist(null);
+        setShowDeleteModal(false);
+      }
+    } catch (error) {
+      console.error(
+        'Failed to delete playlist:',
+        error
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ============================================================
+  // REMOVE SONG
+  // ============================================================
+
+  const removeSongFromPlaylist =
+    async (songId) => {
+      if (!selectedPlaylist) {
+        return;
+      }
+
+      try {
+        await api.delete(
+          `/playlists/${selectedPlaylist.id}/songs/${songId}`
+        );
+
+        await openPlaylist(
+          selectedPlaylist
+        );
+      } catch (error) {
+        console.error(
+          'Failed to remove song:',
+          error
+        );
+      }
+    };
+
+  // ============================================================
+  // PLAY PLAYLIST
+  // ============================================================
+
+  const handlePlayPlaylist = () => {
+    if (
+      !selectedPlaylist ||
+      !selectedPlaylist.songs?.length
+    ) {
+      return;
+    }
+
+    const songs =
+      selectedPlaylist.songs;
+
+    playSong(
+      songs[0],
+      songs
+    );
+  };
+
+  // ============================================================
+  // FILTER PLAYLISTS
+  // ============================================================
+
+  const filteredPlaylists =
+    useMemo(() => {
+      if (!searchTerm.trim()) {
+        return playlists;
+      }
+
+      const query =
+        searchTerm.toLowerCase();
+
+      return playlists.filter(
+        (playlist) =>
+          playlist.name
+            ?.toLowerCase()
+            .includes(query) ||
+          playlist.description
+            ?.toLowerCase()
+            .includes(query) ||
+          playlist.creator_username
+            ?.toLowerCase()
+            .includes(query)
+      );
+    }, [
+      playlists,
+      searchTerm,
+    ]);
+
+  // ============================================================
+  // PLAYLIST COVER
+  // ============================================================
+
+  const getPlaylistCover = (
+    playlist
+  ) => {
+    if (playlist.cover_url) {
+      return playlist.cover_url;
+    }
+
+    if (playlist.thumbnail_url) {
+      return playlist.thumbnail_url;
+    }
+
+    if (playlist.songs?.length) {
+      return (
+        playlist.songs[0]
+          ?.thumbnail_url ||
+        DEFAULT_COVER
+      );
+    }
+
+    return DEFAULT_COVER;
+  };
+
+  // ============================================================
+  // OPEN CREATE MODAL
+  // ============================================================
+
+  const openCreateModal = () => {
+    setPlaylistName('');
+    setPlaylistDescription('');
+
+    /*
+     * Admin playlists default to public.
+     * Admin can change it before creating.
+     */
+    setPlaylistIsPublic(true);
+
+    setShowCreateModal(true);
+  };
+
+  // ============================================================
+  // OPEN EDIT MODAL
+  // ============================================================
+
+  const openEditModal = (playlist = null) => {
+    const target =
+      playlist || selectedPlaylist;
+
+    if (!target) {
+      return;
+    }
+
+    setSelectedPlaylist(target);
+
+    setPlaylistName(
+      target.name || ''
+    );
+
+    setPlaylistDescription(
+      target.description || ''
+    );
+
+    setPlaylistIsPublic(
+      Boolean(target.is_public)
+    );
+
+    setShowEditModal(true);
+    setOpenMenu(null);
+  };
+
+  // ============================================================
+  // OPEN DELETE MODAL
+  // ============================================================
+
+  const openDeleteModal = (
+    playlist = null
+  ) => {
+    const target =
+      playlist || selectedPlaylist;
+
+    if (!target) {
+      return;
+    }
+
+    setSelectedPlaylist(target);
+    setShowDeleteModal(true);
+    setOpenMenu(null);
+  };
+
+  // ============================================================
+  // PLAYLIST TYPE
+  // ============================================================
+
+  const isAdminPlaylist = (
+    playlist
+  ) => {
+    return (
+      playlist?.creator_role ===
+        'admin' ||
+      playlist?.role === 'admin'
+    );
+  };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  if (
+    loading &&
+    !selectedPlaylist
+  ) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+
+          <div className="h-8 w-48 animate-pulse rounded bg-slate-800" />
+
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
+            {[...Array(10)].map(
+              (_, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-3"
+                >
+                  <div className="aspect-square animate-pulse rounded-xl bg-slate-800" />
+
+                  <div className="mt-3 h-4 w-3/4 animate-pulse rounded bg-slate-800" />
+
+                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-slate-800" />
+                </div>
+              )
+            )}
+
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // PLAYLIST DETAIL
+  // ============================================================
+
+  if (selectedPlaylist) {
+    const songs =
+      selectedPlaylist.songs || [];
+
+    const adminPlaylist =
+      isAdminPlaylist(
+        selectedPlaylist
+      );
+
+    const publicPlaylist =
+      Boolean(
+        selectedPlaylist.is_public
+      );
+
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-slate-950">
+
+        {/* Background */}
+
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+
+          <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+
+          <div className="absolute right-0 top-1/3 h-96 w-96 rounded-full bg-cyan-500/5 blur-3xl" />
+
         </div>
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 font-semibold text-slate-950 rounded-xl text-xs transition cursor-pointer shadow-lg shadow-emerald-500/10"
-        >
-          <Plus className="w-4 h-4" />
-          Create Playlist
-        </button>
-      </div>
+        <main className="relative mx-auto max-w-7xl px-4 py-6 pb-40 sm:px-6 lg:px-8">
 
-      {/* Main Content Area */}
-      {activePlaylist ? (
-        <div>
+          {/* Back */}
+
           <button
-            onClick={() => setActivePlaylist(null)}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 mb-6 cursor-pointer"
+            type="button"
+            onClick={() =>
+              setSelectedPlaylist(null)
+            }
+            className="
+              mb-6
+              flex
+              items-center
+              gap-2
+              text-sm
+              font-semibold
+              text-slate-500
+              transition
+              hover:text-white
+            "
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to all playlists
+            <ChevronLeft className="h-4 w-4" />
+
+            All Playlists
           </button>
 
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-100">{activePlaylist.name}</h2>
-                {activePlaylist.is_public ? (
-                  <Globe className="w-4 h-4 text-slate-400" title="Public" />
-                ) : (
-                  <Lock className="w-4 h-4 text-amber-400" title="Private" />
-                )}
+          {/* Hero */}
+
+          <section
+            className="
+              relative
+              overflow-hidden
+              rounded-3xl
+              border
+              border-slate-800
+              bg-gradient-to-br
+              from-slate-900
+              via-slate-900
+              to-slate-950
+              p-6
+              shadow-2xl
+              sm:p-8
+            "
+          >
+
+            <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
+
+            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end">
+
+              {/* Cover */}
+
+              <div className="relative h-48 w-48 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-800 shadow-2xl sm:h-56 sm:w-56">
+
+                <img
+                  src={getPlaylistCover(
+                    selectedPlaylist
+                  )}
+                  alt={
+                    selectedPlaylist.name
+                  }
+                  className="h-full w-full object-cover"
+                />
+
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+
               </div>
-              <p className="text-xs text-slate-400 mt-1">{activePlaylist.description || 'No description provided.'}</p>
-              <p className="text-[11px] text-slate-500 mt-2">{activePlaylist.songs?.length || 0} tracks</p>
+
+              {/* Info */}
+
+              <div className="min-w-0 flex-1">
+
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+
+                  <ListMusic className="h-4 w-4 text-emerald-400" />
+
+                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">
+                    Playlist
+                  </span>
+
+                  {/* ADMIN BADGE */}
+
+                  {adminPlaylist && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-purple-400">
+
+                      <ShieldCheck className="h-3 w-3" />
+
+                      Admin
+                    </span>
+                  )}
+
+                  {/* PUBLIC / PRIVATE */}
+
+                  <span
+                    className={`
+                      inline-flex
+                      items-center
+                      gap-1
+                      rounded-md
+                      border
+                      px-2
+                      py-1
+                      text-[9px]
+                      font-bold
+                      uppercase
+                      tracking-wider
+                      ${
+                        publicPlaylist
+                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                          : 'border-slate-700 bg-slate-800/80 text-slate-500'
+                      }
+                    `}
+                  >
+                    {publicPlaylist ? (
+                      <>
+                        <Globe2 className="h-3 w-3" />
+                        Public
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-3 w-3" />
+                        Private
+                      </>
+                    )}
+                  </span>
+
+                </div>
+
+                <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
+                  {selectedPlaylist.name}
+                </h1>
+
+                {selectedPlaylist.description && (
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
+                    {
+                      selectedPlaylist.description
+                    }
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+
+                  <span className="flex items-center gap-1.5">
+                    <Music2 className="h-3.5 w-3.5" />
+
+                    {songs.length}{' '}
+
+                    {songs.length === 1
+                      ? 'song'
+                      : 'songs'}
+                  </span>
+
+                  <span>•</span>
+
+                  {selectedPlaylist.creator_username && (
+                    <>
+                      <span>
+                        By{' '}
+                        <span className="text-slate-400">
+                          {
+                            selectedPlaylist.creator_username
+                          }
+                        </span>
+                      </span>
+
+                      <span>•</span>
+                    </>
+                  )}
+
+                  <span className="flex items-center gap-1.5">
+                    <Headphones className="h-3.5 w-3.5" />
+
+                    {adminPlaylist
+                      ? 'Fackify Admin Collection'
+                      : 'Your collection'}
+                  </span>
+
+                </div>
+
+                {/* Actions */}
+
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+
+                  <button
+                    type="button"
+                    onClick={
+                      handlePlayPlaylist
+                    }
+                    disabled={
+                      songs.length === 0
+                    }
+                    className="
+                      inline-flex
+                      items-center
+                      gap-2
+                      rounded-xl
+                      bg-emerald-400
+                      px-5
+                      py-2.5
+                      text-xs
+                      font-bold
+                      text-slate-950
+                      shadow-lg
+                      shadow-emerald-500/20
+                      transition
+                      hover:bg-emerald-300
+                      disabled:cursor-not-allowed
+                      disabled:opacity-40
+                    "
+                  >
+                    <Play className="h-4 w-4 fill-current" />
+
+                    Play Playlist
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openEditModal()
+                    }
+                    className="
+                      inline-flex
+                      items-center
+                      gap-2
+                      rounded-xl
+                      border
+                      border-slate-700
+                      bg-slate-900
+                      px-4
+                      py-2.5
+                      text-xs
+                      font-semibold
+                      text-slate-300
+                      transition
+                      hover:bg-slate-800
+                      hover:text-white
+                    "
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+
+                    Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openDeleteModal()
+                    }
+                    className="
+                      inline-flex
+                      items-center
+                      gap-2
+                      rounded-xl
+                      border
+                      border-rose-500/20
+                      bg-rose-500/5
+                      px-4
+                      py-2.5
+                      text-xs
+                      font-semibold
+                      text-rose-400
+                      transition
+                      hover:bg-rose-500/10
+                    "
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+
+                    Delete
+                  </button>
+
+                </div>
+
+              </div>
+
+            </div>
+          </section>
+
+          {/* Songs */}
+
+          <section className="mt-10">
+
+            <div className="mb-5 flex items-end justify-between">
+
+              <div>
+
+                <div className="mb-1 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-400" />
+
+                  <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Collection
+                  </span>
+                </div>
+
+                <h2 className="text-2xl font-bold text-white">
+                  Songs
+                </h2>
+
+              </div>
+
+            </div>
+
+            {songsLoading ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
+                {[...Array(5)].map(
+                  (_, index) => (
+                    <div
+                      key={index}
+                      className="aspect-[0.82] animate-pulse rounded-2xl bg-slate-900"
+                    />
+                  )
+                )}
+
+              </div>
+            ) : songs.length === 0 ? (
+
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/50 p-12 text-center sm:p-20">
+
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 text-slate-600">
+                  <Music2 className="h-7 w-7" />
+                </div>
+
+                <h3 className="mt-5 text-base font-bold text-white">
+                  This playlist is empty
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">
+                  Add songs from your music library to start building this playlist.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
+                {songs.map((song) => (
+                  <div
+                    key={song.id}
+                    className="group relative"
+                  >
+
+                    <SongCard
+                      song={song}
+                      songList={songs}
+                    />
+
+                    {/* Remove */}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeSongFromPlaylist(
+                          song.id
+                        )
+                      }
+                      title="Remove from playlist"
+                      className="
+                        absolute
+                        right-2
+                        top-2
+                        z-20
+                        flex
+                        h-8
+                        w-8
+                        items-center
+                        justify-center
+                        rounded-lg
+                        border
+                        border-white/10
+                        bg-slate-950/90
+                        text-slate-400
+                        opacity-0
+                        shadow-xl
+                        transition
+                        group-hover:opacity-100
+                        hover:text-rose-400
+                      "
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+
+                  </div>
+                ))}
+
+              </div>
+
+            )}
+
+          </section>
+
+        </main>
+
+        {/* Edit modal */}
+
+        {showEditModal && (
+          <PlaylistModal
+            title="Edit playlist"
+            name={playlistName}
+            description={playlistDescription}
+            isPublic={playlistIsPublic}
+            showVisibility={isAdmin}
+            setName={setPlaylistName}
+            setDescription={
+              setPlaylistDescription
+            }
+            setIsPublic={
+              setPlaylistIsPublic
+            }
+            onClose={() =>
+              setShowEditModal(false)
+            }
+            onSubmit={
+              handleEditPlaylist
+            }
+            loading={actionLoading}
+            submitText="Save Changes"
+          />
+        )}
+
+        {/* Delete modal */}
+
+        {showDeleteModal && (
+          <ConfirmModal
+            title="Delete playlist?"
+            description={`"${selectedPlaylist.name}" will be permanently removed.`}
+            onClose={() =>
+              setShowDeleteModal(false)
+            }
+            onConfirm={
+              handleDeletePlaylist
+            }
+            loading={actionLoading}
+          />
+        )}
+
+      </div>
+    );
+  }
+
+  // ============================================================
+  // PLAYLIST LIBRARY
+  // ============================================================
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-slate-950">
+
+      {/* Background */}
+
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+
+        <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+
+        <div className="absolute right-0 top-1/4 h-96 w-96 rounded-full bg-cyan-500/5 blur-3xl" />
+
+        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-purple-500/5 blur-3xl" />
+
+      </div>
+
+      <main className="relative mx-auto max-w-7xl px-4 py-6 pb-40 sm:px-6 lg:px-8">
+
+        {/* Header */}
+
+        <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-6 shadow-2xl sm:p-8">
+
+          <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
+
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+
+            <div>
+
+              <div className="mb-3 flex items-center gap-2">
+
+                <ListMusic className="h-4 w-4 text-emerald-400" />
+
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-400">
+                  Your Library
+                </span>
+
+              </div>
+
+              <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
+                Your Playlists
+              </h1>
+
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">
+                Discover curated collections and create playlists for every mood, memory and moment.
+              </p>
+
             </div>
 
             <button
-              onClick={() => handleDeletePlaylist(activePlaylist.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500 hover:text-white rounded-lg text-xs transition self-start sm:self-auto cursor-pointer"
+              type="button"
+              onClick={
+                openCreateModal
+              }
+              className="
+                inline-flex
+                shrink-0
+                items-center
+                justify-center
+                gap-2
+                rounded-xl
+                bg-emerald-400
+                px-5
+                py-3
+                text-xs
+                font-bold
+                text-slate-950
+                shadow-lg
+                shadow-emerald-500/20
+                transition
+                hover:bg-emerald-300
+                active:scale-95
+              "
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete Playlist
+              <Plus className="h-4 w-4" />
+
+              Create Playlist
             </button>
+
           </div>
 
-          {activePlaylist.songs?.length === 0 ? (
-            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 text-xs">
-              No tracks in this playlist yet. Add songs from your Discover feed!
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {activePlaylist.songs.map((song) => (
-                <div key={song.id} className="relative group">
-                  <SongCard song={song} songList={activePlaylist.songs} />
-                  <button
-                    onClick={() => handleRemoveSong(song.id)}
-                    className="absolute top-2 right-2 p-1.5 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg shadow opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                    title="Remove from playlist"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Search */}
+
+          <div className="relative mt-7 max-w-xl">
+
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
+
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) =>
+                setSearchTerm(
+                  event.target.value
+                )
+              }
+              placeholder="Search your playlists..."
+              className="
+                w-full
+                rounded-xl
+                border
+                border-slate-800
+                bg-slate-950/70
+                py-3
+                pl-11
+                pr-4
+                text-sm
+                text-white
+                outline-none
+                transition
+                placeholder:text-slate-600
+                focus:border-emerald-500/40
+                focus:ring-4
+                focus:ring-emerald-500/5
+              "
+            />
+
+          </div>
+
+        </section>
+
+        {/* Stats */}
+
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+          <StatCard
+            icon={ListMusic}
+            value={playlists.length}
+            label="Playlists"
+          />
+
+          <StatCard
+            icon={Music2}
+            value={playlists.reduce(
+              (total, playlist) =>
+                total +
+                Number(
+                  playlist.song_count ||
+                    playlist.songs_count ||
+                    playlist.songs?.length ||
+                    0
+                ),
+              0
+            )}
+            label="Songs saved"
+          />
+
+          <div className="hidden sm:block">
+            <StatCard
+              icon={Heart}
+              value="∞"
+              label="Memories"
+            />
+          </div>
+
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {playlists.map((pl) => (
-            <div
-              key={pl.id}
-              onClick={() => loadPlaylistDetails(pl.id)}
-              className="bg-slate-900 border border-slate-800/80 hover:border-slate-700 p-5 rounded-2xl transition hover:bg-slate-800/40 cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl">
-                    <FolderPlus className="w-5 h-5" />
-                  </div>
-                  {pl.is_public ? (
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-medium">Public</span>
-                  ) : (
-                    <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-medium">Private</span>
-                  )}
-                </div>
-                <h3 className="font-semibold text-slate-100 text-sm">{pl.name}</h3>
-                <p className="text-xs text-slate-400 line-clamp-2 mt-1">{pl.description || 'Custom playlist'}</p>
+
+        {/* Playlist grid */}
+
+        <section className="mt-10">
+
+          <div className="mb-5 flex items-center justify-between">
+
+            <div>
+
+              <div className="mb-1 flex items-center gap-2">
+
+                <Sparkles className="h-4 w-4 text-emerald-400" />
+
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Collections
+                </span>
+
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
-                <span>{pl.song_count || 0} tracks</span>
-                <span>{new Date(pl.created_at).toLocaleDateString()}</span>
-              </div>
+              <h2 className="text-2xl font-bold text-white">
+                {searchTerm
+                  ? 'Search results'
+                  : 'All playlists'}
+              </h2>
+
             </div>
-          ))}
-        </div>
-      )}
 
-      {/* Create Playlist Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-md w-full shadow-2xl">
-            <h3 className="text-sm font-semibold text-slate-100 mb-4">Create New Playlist</h3>
-            <form onSubmit={handleCreate} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 mb-1">Playlist Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Gym Mix, Deep Focus..."
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-emerald-500"
-                />
+            <span className="text-xs text-slate-600">
+              {filteredPlaylists.length}{' '}
+              {filteredPlaylists.length === 1
+                ? 'playlist'
+                : 'playlists'}
+            </span>
+
+          </div>
+
+          {filteredPlaylists.length ===
+          0 ? (
+
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/50 p-12 text-center sm:p-20">
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 text-slate-600">
+                <ListMusic className="h-7 w-7" />
               </div>
 
-              <div>
-                <label className="block text-slate-300 mb-1">Description</label>
-                <textarea
-                  rows="2"
-                  placeholder="What's the vibe of this playlist?"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-emerald-500 resize-none"
-                />
-              </div>
+              <h3 className="mt-5 text-base font-bold text-white">
+                {searchTerm
+                  ? 'No playlists found'
+                  : 'Create your first playlist'}
+              </h3>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isPublic"
-                  checked={form.isPublic}
-                  onChange={(e) => setForm({ ...form, isPublic: e.target.checked })}
-                  className="accent-emerald-500 rounded cursor-pointer"
-                />
-                <label htmlFor="isPublic" className="text-slate-300 cursor-pointer">Make playlist publicly visible</label>
-              </div>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">
+                {searchTerm
+                  ? `Nothing matches "${searchTerm}".`
+                  : 'Organize your favorite songs into collections you can play anytime.'}
+              </p>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              {!searchTerm && (
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition cursor-pointer"
+                  onClick={
+                    openCreateModal
+                  }
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-300"
                 >
-                  Cancel
+                  <Plus className="h-4 w-4" />
+
+                  Create Playlist
                 </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 font-semibold text-slate-950 rounded-lg transition disabled:opacity-50 cursor-pointer"
-                >
-                  {creating ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              )}
+
+            </div>
+
+          ) : (
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
+              {filteredPlaylists.map(
+                (playlist) => (
+                  <PlaylistCard
+                    key={playlist.id}
+                    playlist={playlist}
+                    cover={getPlaylistCover(
+                      playlist
+                    )}
+                    isAdminPlaylist={isAdminPlaylist(
+                      playlist
+                    )}
+                    openMenu={
+                      openMenu
+                    }
+                    setOpenMenu={
+                      setOpenMenu
+                    }
+                    onOpen={() =>
+                      openPlaylist(
+                        playlist
+                      )
+                    }
+                    onPlay={() => {
+                      const songs =
+                        playlist.songs ||
+                        [];
+
+                      if (
+                        songs.length
+                      ) {
+                        playSong(
+                          songs[0],
+                          songs
+                        );
+                      } else {
+                        openPlaylist(
+                          playlist
+                        );
+                      }
+                    }}
+                    onEdit={() =>
+                      openEditModal(
+                        playlist
+                      )
+                    }
+                    onDelete={() =>
+                      openDeleteModal(
+                        playlist
+                      )
+                    }
+                  />
+                )
+              )}
+
+            </div>
+
+          )}
+
+        </section>
+
+      </main>
+
+      {/* Create modal */}
+
+      {showCreateModal && (
+        <PlaylistModal
+          title="Create playlist"
+          name={playlistName}
+          description={
+            playlistDescription
+          }
+          isPublic={playlistIsPublic}
+          showVisibility={isAdmin}
+          setName={setPlaylistName}
+          setDescription={
+            setPlaylistDescription
+          }
+          setIsPublic={
+            setPlaylistIsPublic
+          }
+          onClose={() =>
+            setShowCreateModal(false)
+          }
+          onSubmit={
+            handleCreatePlaylist
+          }
+          loading={actionLoading}
+          submitText="Create Playlist"
+        />
       )}
+
+      {/* Delete modal */}
+
+      {showDeleteModal &&
+        selectedPlaylist && (
+          <ConfirmModal
+            title="Delete playlist?"
+            description={`"${selectedPlaylist.name}" will be permanently removed.`}
+            onClose={() =>
+              setShowDeleteModal(
+                false
+              )
+            }
+            onConfirm={
+              handleDeletePlaylist
+            }
+            loading={actionLoading}
+          />
+        )}
+
+    </div>
+  );
+}
+
+// ============================================================
+// PLAYLIST CARD
+// ============================================================
+
+function PlaylistCard({
+  playlist,
+  cover,
+  isAdminPlaylist,
+  openMenu,
+  setOpenMenu,
+  onOpen,
+  onPlay,
+  onEdit,
+  onDelete,
+}) {
+  const songCount =
+    playlist.song_count ||
+    playlist.songs_count ||
+    playlist.songs?.length ||
+    0;
+
+  const isMenuOpen =
+    openMenu === playlist.id;
+
+  const isPublic =
+    Boolean(
+      playlist.is_public
+    );
+
+  return (
+    <article
+      className="
+        group
+        relative
+        overflow-hidden
+        rounded-2xl
+        border
+        border-slate-800/80
+        bg-slate-900/70
+        p-3
+        transition-all
+        duration-300
+        hover:-translate-y-1
+        hover:border-slate-700
+        hover:bg-slate-900
+        hover:shadow-2xl
+        hover:shadow-black/30
+      "
+    >
+
+      {/* Cover */}
+
+      <div className="relative block w-full overflow-hidden rounded-xl">
+
+        <button
+          type="button"
+          onClick={onOpen}
+          className="block w-full text-left"
+        >
+
+          <div className="aspect-square overflow-hidden rounded-xl bg-slate-800">
+
+            <img
+              src={cover}
+              alt={playlist.name}
+              className="
+                h-full
+                w-full
+                object-cover
+                transition
+                duration-500
+                group-hover:scale-105
+              "
+            />
+
+          </div>
+
+          <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
+
+        </button>
+
+        {/* Play */}
+
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlay();
+          }}
+          className="
+            absolute
+            bottom-3
+            right-3
+            z-10
+            flex
+            h-10
+            w-10
+            translate-y-2
+            items-center
+            justify-center
+            rounded-full
+            bg-emerald-400
+            text-slate-950
+            opacity-0
+            shadow-xl
+            shadow-black/40
+            transition
+            group-hover:translate-y-0
+            group-hover:opacity-100
+            hover:bg-emerald-300
+          "
+          aria-label="Play playlist"
+        >
+          <Play className="ml-0.5 h-4 w-4 fill-current" />
+        </button>
+
+      </div>
+
+      {/* Information */}
+
+      <div className="px-1 pt-3">
+
+        <div className="flex items-start justify-between gap-2">
+
+          <button
+            type="button"
+            onClick={onOpen}
+            className="min-w-0 flex-1 text-left"
+          >
+
+            <h3 className="truncate text-sm font-bold text-white">
+              {playlist.name}
+            </h3>
+
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+
+              <p className="text-[10px] text-slate-500">
+                {songCount}{' '}
+                {songCount === 1
+                  ? 'song'
+                  : 'songs'}
+              </p>
+
+              {/* ADMIN BADGE */}
+
+              {isAdminPlaylist && (
+                <>
+                  <span className="text-[9px] text-slate-700">
+                    •
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-purple-400">
+                    <ShieldCheck className="h-2.5 w-2.5" />
+
+                    Admin
+                  </span>
+                </>
+              )}
+
+              {/* PUBLIC BADGE */}
+
+              {isAdminPlaylist &&
+                isPublic && (
+                  <>
+                    <span className="text-[9px] text-slate-700">
+                      •
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+                      <Globe2 className="h-2.5 w-2.5" />
+
+                      Public
+                    </span>
+                  </>
+              )}
+
+            </div>
+
+          </button>
+
+          {/* Menu */}
+
+          <div className="relative">
+
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+
+                setOpenMenu(
+                  isMenuOpen
+                    ? null
+                    : playlist.id
+                );
+              }}
+              className="
+                flex
+                h-7
+                w-7
+                shrink-0
+                items-center
+                justify-center
+                rounded-lg
+                text-slate-600
+                transition
+                hover:bg-slate-800
+                hover:text-white
+              "
+              aria-label="Playlist menu"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+
+            {isMenuOpen && (
+              <div
+                className="absolute right-0 top-8 z-40 w-36 overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-1 shadow-2xl"
+                onClick={(event) =>
+                  event.stopPropagation()
+                }
+              >
+
+                <button
+                  type="button"
+                  onClick={onOpen}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-400 transition hover:bg-slate-900 hover:text-white"
+                >
+                  <ListMusic className="h-3.5 w-3.5" />
+
+                  Open
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-slate-400 transition hover:bg-slate-900 hover:text-white"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+
+                  Edit
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-rose-400 transition hover:bg-rose-500/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+
+                  Delete
+                </button>
+
+              </div>
+            )}
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </article>
+  );
+}
+
+// ============================================================
+// STAT CARD
+// ============================================================
+
+function StatCard({
+  icon: Icon,
+  value,
+  label,
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+
+      <div className="flex items-center gap-3">
+
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+          <Icon className="h-4 w-4" />
+        </div>
+
+        <div>
+
+          <p className="text-xl font-bold text-white">
+            {value}
+          </p>
+
+          <p className="text-[10px] text-slate-600">
+            {label}
+          </p>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+// ============================================================
+// PLAYLIST MODAL
+// ============================================================
+
+function PlaylistModal({
+  title,
+  name,
+  description,
+  isPublic,
+  showVisibility,
+  setName,
+  setDescription,
+  setIsPublic,
+  onClose,
+  onSubmit,
+  loading,
+  submitText,
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl">
+
+        {/* Header */}
+
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+
+          <div>
+
+            <h2 className="text-base font-bold text-white">
+              {title}
+            </h2>
+
+            <p className="mt-0.5 text-[10px] text-slate-600">
+              Build your music collection.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-900 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+        </div>
+
+        {/* Form */}
+
+        <form
+          onSubmit={onSubmit}
+          className="space-y-4 p-5"
+        >
+
+          {/* Name */}
+
+          <div>
+
+            <label className="mb-2 block text-xs font-semibold text-slate-400">
+              Playlist name
+            </label>
+
+            <input
+              type="text"
+              value={name}
+              onChange={(event) =>
+                setName(
+                  event.target.value
+                )
+              }
+              placeholder="e.g. Late Night Vibes"
+              autoFocus
+              className="
+                w-full
+                rounded-xl
+                border
+                border-slate-800
+                bg-slate-900
+                px-4
+                py-3
+                text-sm
+                text-white
+                outline-none
+                placeholder:text-slate-600
+                focus:border-emerald-500/40
+                focus:ring-4
+                focus:ring-emerald-500/5
+              "
+            />
+
+          </div>
+
+          {/* Description */}
+
+          <div>
+
+            <label className="mb-2 block text-xs font-semibold text-slate-400">
+              Description
+
+              <span className="ml-1 text-slate-700">
+                optional
+              </span>
+            </label>
+
+            <textarea
+              value={description}
+              onChange={(event) =>
+                setDescription(
+                  event.target.value
+                )
+              }
+              placeholder="What's this playlist about?"
+              rows={3}
+              className="
+                w-full
+                resize-none
+                rounded-xl
+                border
+                border-slate-800
+                bg-slate-900
+                px-4
+                py-3
+                text-sm
+                text-white
+                outline-none
+                placeholder:text-slate-600
+                focus:border-emerald-500/40
+                focus:ring-4
+                focus:ring-emerald-500/5
+              "
+            />
+
+          </div>
+
+          {/* ADMIN VISIBILITY */}
+
+          {showVisibility && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+
+              <div className="flex items-start justify-between gap-4">
+
+                <div className="min-w-0">
+
+                  <div className="flex items-center gap-2">
+
+                    {isPublic ? (
+                      <Globe2 className="h-4 w-4 text-emerald-400" />
+                    ) : (
+                      <Lock className="h-4 w-4 text-slate-500" />
+                    )}
+
+                    <p className="text-xs font-semibold text-white">
+                      Playlist visibility
+                    </p>
+
+                  </div>
+
+                  <p className="mt-1 text-[10px] leading-5 text-slate-500">
+
+                    {isPublic
+                      ? 'Anyone can see this playlist.'
+                      : 'Only admins can see this playlist.'}
+
+                  </p>
+
+                </div>
+
+                {/* Toggle */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsPublic(
+                      !isPublic
+                    )
+                  }
+                  className={`
+                    relative
+                    h-6
+                    w-11
+                    shrink-0
+                    rounded-full
+                    transition
+                    ${
+                      isPublic
+                        ? 'bg-emerald-400'
+                        : 'bg-slate-700'
+                    }
+                  `}
+                  aria-label="Toggle playlist visibility"
+                  aria-pressed={isPublic}
+                >
+
+                  <span
+                    className={`
+                      absolute
+                      top-1
+                      h-4
+                      w-4
+                      rounded-full
+                      bg-white
+                      shadow
+                      transition
+                      ${
+                        isPublic
+                          ? 'left-6'
+                          : 'left-1'
+                      }
+                    `}
+                  />
+
+                </button>
+
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+
+                <span
+                  className={`
+                    inline-flex
+                    items-center
+                    gap-1
+                    rounded-md
+                    px-2
+                    py-1
+                    text-[9px]
+                    font-bold
+                    uppercase
+                    tracking-wider
+                    ${
+                      isPublic
+                        ? 'bg-emerald-500/10 text-emerald-400'
+                        : 'bg-slate-800 text-slate-500'
+                    }
+                  `}
+                >
+                  {isPublic ? (
+                    <>
+                      <Globe2 className="h-3 w-3" />
+                      Public
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-3 w-3" />
+                      Private
+                    </>
+                  )}
+                </span>
+
+                <span className="text-[10px] text-slate-600">
+
+                  {isPublic
+                    ? 'Visible to all users'
+                    : 'Hidden from normal users'}
+
+                </span>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* Buttons */}
+
+          <div className="flex justify-end gap-2 pt-2">
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-900 hover:text-white"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !name.trim()
+              }
+              className="
+                inline-flex
+                items-center
+                gap-2
+                rounded-xl
+                bg-emerald-400
+                px-4
+                py-2.5
+                text-xs
+                font-bold
+                text-slate-950
+                transition
+                hover:bg-emerald-300
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              {loading ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />
+
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="h-3.5 w-3.5" />
+
+                  {submitText}
+                </>
+              )}
+            </button>
+
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+  );
+}
+
+// ============================================================
+// CONFIRM MODAL
+// ============================================================
+
+function ConfirmModal({
+  title,
+  description,
+  onClose,
+  onConfirm,
+  loading,
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+
+      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400">
+          <Trash2 className="h-5 w-5" />
+        </div>
+
+        <h2 className="mt-4 text-base font-bold text-white">
+          {title}
+        </h2>
+
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          {description}
+        </p>
+
+        <div className="mt-6 flex justify-end gap-2">
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-900 hover:text-white"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-rose-400 disabled:opacity-40"
+          >
+            {loading ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+
+            Delete
+          </button>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }
