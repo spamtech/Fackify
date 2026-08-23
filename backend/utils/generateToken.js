@@ -1,9 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-export const generateToken = (
-  res,
-  user
-) => {
+
+export const generateToken = (res, user) => {
   const token = jwt.sign(
     {
       id: user.id,
@@ -17,31 +15,21 @@ export const generateToken = (
   );
 
   const isProduction =
-    process.env.NODE_ENV ===
-    'production';
+    process.env.NODE_ENV === 'production';
 
-  res.cookie(
-    'token',
-    token,
-    {
-      httpOnly: true,
+  res.cookie('token', token, {
+    httpOnly: true,
 
-      secure: isProduction,
+    secure: isProduction,
 
-      sameSite: isProduction
-        ? 'none'
-        : 'lax',
+    sameSite: isProduction
+      ? 'none'
+      : 'lax',
 
-      maxAge:
-        7 *
-        24 *
-        60 *
-        60 *
-        1000,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
 
-      path: '/',
-    }
-  );
+    path: '/',
+  });
 
   return token;
 };
