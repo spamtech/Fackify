@@ -185,6 +185,60 @@ export default function App() {
 
 
             {/* ==================================================
+                FOOTER
+            ================================================== */}
+
+            <footer className="border-t border-white/10 bg-slate-950/80 backdrop-blur-xl">
+
+              <div className="max-w-7xl mx-auto px-6 py-6">
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+
+                  {/* Brand */}
+
+                  <div className="flex items-center gap-2">
+
+                    <span className="text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent">
+                      Fackify
+                    </span>
+
+                    <span className="text-slate-600">
+                      •
+                    </span>
+
+                    <span className="text-sm text-slate-400">
+                      Your Music. Your Vibe.
+                    </span>
+
+                  </div>
+
+
+                  {/* Creator */}
+
+                  <div className="text-sm text-slate-400 text-center">
+
+                    © {new Date().getFullYear()} Fackify
+
+                    <span className="mx-2 text-slate-600">
+                      |
+                    </span>
+
+                    Created by{' '}
+
+                    <span className="font-semibold text-slate-200">
+                      Dipnarayan Ghosh
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </footer>
+
+
+            {/* ==================================================
                 GLOBAL MEDIA PLAYER
             ================================================== */}
 
