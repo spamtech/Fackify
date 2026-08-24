@@ -1,7 +1,4 @@
 import dotenv from 'dotenv';
-
-// Load environment variables BEFORE importing modules
-// that depend on process.env
 dotenv.config();
 
 import express from 'express';
@@ -30,81 +27,53 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 /* ============================================================
-   ENVIRONMENT
+   ENVIRONMENT & PROXY
 ============================================================ */
-
 const isProduction = process.env.NODE_ENV === 'production';
-
 const PORT = process.env.PORT || 5000;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-const FRONTEND_URL = process.env.FRONTEND_URL || true;
+// Required for secure cookies behind Render's reverse proxy
+app.set('trust proxy', 1);
 
 /* ============================================================
    BASIC MIDDLEWARE
 ============================================================ */
-
 app.disable('x-powered-by');
-
-app.use(
-  express.json({
-    limit: '10mb',
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '10mb',
-  })
-);
-
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 /* ============================================================
    CORS
 ============================================================ */
-
 app.use(
   cors({
     origin: FRONTEND_URL,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Requested-With',
-    ],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
 
 /* ============================================================
    API ROUTES
 ============================================================ */
-
 app.use('/api/auth', authRoutes);
-
 app.use('/api/songs', songRoutes);
-
 app.use('/api/artists', artistRoutes);
-
 app.use('/api/likes', likeRoutes);
-
 app.use('/api/admin', adminRoutes);
-
 app.use('/api/playlists', playlistRoutes);
-
 app.use('/api/users', userRoutes);
-
 app.use('/api/notifications', notificationRoutes);
 
 /* ============================================================
    HEALTH CHECK
 ============================================================ */
-
 app.get('/api/health', async (req, res) => {
   try {
     const dbRes = await pool.query('SELECT NOW()');
-
     res.status(200).json({
       status: 'healthy',
       database: 'connected',
@@ -113,57 +82,37 @@ app.get('/api/health', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Health check database error:', error);
-
     res.status(500).json({
       status: 'unhealthy',
       database: 'disconnected',
-      error:
-        process.env.NODE_ENV === 'production'
-          ? 'Database connection failed'
-          : error.message,
+      error: isProduction ? 'Database connection failed' : error.message,
     });
   }
 });
 
 /* ============================================================
-   FRONTEND STATIC FILES
+   FRONTEND STATIC FILES & SPA FALLBACK
 ============================================================ */
-
-const frontendDistPath = path.resolve(
-  __dirname,
-  '../frontend/dist'
-);
-
+const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));
 
-/* ============================================================
-   REACT SPA FALLBACK
-============================================================ */
-
-app.get('{/*path}', (req, res, next) => {
-  // Never send index.html for API routes
+app.get('*', (req, res, next) => {
   if (req.originalUrl.startsWith('/api')) {
     return next();
   }
-
-  res.sendFile(
-    path.join(frontendDistPath, 'index.html')
-  );
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
 });
 
 /* ============================================================
    ERROR HANDLING
 ============================================================ */
-
 app.use(notFound);
-
 app.use(errorHandler);
 
 /* ============================================================
    START SERVER
 ============================================================ */
-
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log('==========================================');
   console.log('🚀 FACKIFY SERVER STARTED');
   console.log('==========================================');
