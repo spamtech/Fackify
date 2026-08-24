@@ -7,14 +7,11 @@ import React, {
 
 import api from '../api/axiosInstance';
 
-
 const AuthContext = createContext(null);
-
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
 
   // ============================================================
   // VERIFY EXISTING SESSION
@@ -30,7 +27,6 @@ export const AuthProvider = ({ children }) => {
         } else {
           setUser(null);
         }
-
       } catch (err) {
         setUser(null);
       } finally {
@@ -41,6 +37,45 @@ export const AuthProvider = ({ children }) => {
     verifyUser();
   }, []);
 
+  // ============================================================
+  // ONLINE ACTIVITY / HEARTBEAT
+  //
+  // Sends activity to backend every 30 seconds while logged in.
+  // Admin Dashboard can use last_active_at to determine
+  // whether the user is currently online.
+  // ============================================================
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    let heartbeatInterval;
+
+    const sendHeartbeat = async () => {
+      try {
+        await api.post('/auth/heartbeat');
+      } catch (err) {
+        // Do not log the user out just because a heartbeat failed.
+        console.warn(
+          'Fackify heartbeat failed:',
+          err?.response?.data?.message || err.message
+        );
+      }
+    };
+
+    // Send immediately after authentication
+    sendHeartbeat();
+
+    // Then keep the user active every 30 seconds
+    heartbeatInterval = setInterval(() => {
+      sendHeartbeat();
+    }, 30000);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+    };
+  }, [user?.id]);
 
   // ============================================================
   // NORMAL LOGIN
@@ -63,7 +98,6 @@ export const AuthProvider = ({ children }) => {
 
     return response.data.user;
   };
-
 
   // ============================================================
   // NORMAL REGISTER
@@ -91,7 +125,6 @@ export const AuthProvider = ({ children }) => {
 
     return response.data.user;
   };
-
 
   // ============================================================
   // GOOGLE LOGIN / SIGNUP
@@ -127,7 +160,6 @@ export const AuthProvider = ({ children }) => {
     return response.data.user;
   };
 
-
   // ============================================================
   // LOGOUT
   // ============================================================
@@ -139,7 +171,6 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
     }
   };
-
 
   return (
     <AuthContext.Provider
@@ -156,7 +187,6 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

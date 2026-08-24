@@ -574,3 +574,32 @@ export const deleteUser = asyncHandler(async (req, res) => {
     user: deleteResult.rows[0],
   });
 });
+
+// ============================================================
+// UPDATE USER ACTIVITY / HEARTBEAT
+// POST /api/auth/heartbeat
+// ACCESS: Private
+// ============================================================
+
+export const updateActivity = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401);
+    throw new Error('Authentication required');
+  }
+
+  await query(
+    `
+    UPDATE users
+    SET last_active_at = NOW()
+    WHERE id = $1
+    `,
+    [userId]
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'Activity updated',
+  });
+});
