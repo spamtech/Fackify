@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
 
-
 export const generateToken = (res, user) => {
   const token = jwt.sign(
     {
@@ -19,15 +18,9 @@ export const generateToken = (res, user) => {
 
   res.cookie('token', token, {
     httpOnly: true,
-
     secure: isProduction,
-
-    sameSite: isProduction
-      ? 'none'
-      : 'lax',
-
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
-
     path: '/',
   });
 
