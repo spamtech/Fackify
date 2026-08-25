@@ -54,9 +54,6 @@ export default function Artists() {
   const [artistsData, setArtistsData] =
     useState([]);
 
-  const [songs, setSongs] =
-    useState([]);
-
   const [search, setSearch] =
     useState('');
 
@@ -66,9 +63,15 @@ export default function Artists() {
   const [error, setError] =
     useState('');
 
+  const [playingArtistId, setPlayingArtistId] =
+    useState(null);
+
+  const [togglingFavoriteId, setTogglingFavoriteId] =
+    useState(null);
+
 
   /* ==========================================================
-     FETCH ARTISTS + SONGS
+     FETCH ARTISTS
   ========================================================== */
 
   useEffect(() => {
@@ -82,19 +85,7 @@ export default function Artists() {
         setLoading(true);
         setError('');
 
-        const [
-          artistsResponse,
-          songsResponse,
-        ] = await Promise.all([
-          api.get('/artists'),
-
-          api.get('/songs', {
-            params: {
-              limit: 100,
-              offset: 0,
-            },
-          }),
-        ]);
+        const artistsResponse = await api.get('/artists');
 
         if (!mounted) {
           return;
@@ -107,19 +98,8 @@ export default function Artists() {
             ? artistsResponse.data.artists
             : [];
 
-        const fetchedSongs =
-          Array.isArray(
-            songsResponse.data?.songs
-          )
-            ? songsResponse.data.songs
-            : [];
-
         setArtistsData(
           fetchedArtists
-        );
-
-        setSongs(
-          fetchedSongs
         );
 
       } catch (err) {
@@ -139,7 +119,6 @@ export default function Artists() {
         );
 
         setArtistsData([]);
-        setSongs([]);
 
       } finally {
 
@@ -161,7 +140,61 @@ export default function Artists() {
 
 
   /* ==========================================================
-     CREATE ARTIST LIST
+     TOGGLE FAVORITE / BEST ARTIST
+  ========================================================== */
+
+  const handleToggleFavorite = async (event, artistId) => {
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+
+      setTogglingFavoriteId(artistId);
+
+      // Optimistic update
+      setArtistsData((prev) =>
+        prev.map((artist) => {
+          if (String(artist.id) === String(artistId)) {
+            return {
+              ...artist,
+              is_favorite: !artist.is_favorite,
+            };
+          }
+          return artist;
+        })
+      );
+
+      await api.post(`/artists/${artistId}/favorite`);
+
+    } catch (err) {
+
+      console.error('Failed to toggle favorite artist:', err);
+
+      // Revert on failure
+      setArtistsData((prev) =>
+        prev.map((artist) => {
+          if (String(artist.id) === String(artistId)) {
+            return {
+              ...artist,
+              is_favorite: !artist.is_favorite,
+            };
+          }
+          return artist;
+        })
+      );
+
+    } finally {
+
+      setTogglingFavoriteId(null);
+
+    }
+
+  };
+
+
+  /* ==========================================================
+     CREATE SORTED ARTIST LIST (Best Artists First)
   ========================================================== */
 
   const artists = useMemo(() => {
@@ -170,124 +203,41 @@ export default function Artists() {
       .filter((artist) => artist?.id)
       .map((artist) => {
 
-        const artistId =
-          String(artist.id);
-
-        const artistSongs =
-          songs.filter((song) => {
-
-            /* PRIMARY ARTIST */
-
-            if (
-              song?.artist_id &&
-              String(song.artist_id) ===
-                artistId
-            ) {
-              return true;
-            }
-
-            /* MULTIPLE ARTIST IDS */
-
-            if (
-              Array.isArray(
-                song?.artist_ids
-              )
-            ) {
-
-              const found =
-                song.artist_ids.some(
-                  (id) =>
-                    String(id) ===
-                    artistId
-                );
-
-              if (found) {
-                return true;
-              }
-
-            }
-
-            /* MULTIPLE ARTISTS */
-
-            if (
-              Array.isArray(
-                song?.artists
-              )
-            ) {
-
-              const found =
-                song.artists.some(
-                  (item) => {
-
-                    if (
-                      item?.id &&
-                      String(item.id) ===
-                        artistId
-                    ) {
-                      return true;
-                    }
-
-                    if (
-                      item?.artist_id &&
-                      String(item.artist_id) ===
-                        artistId
-                    ) {
-                      return true;
-                    }
-
-                    return false;
-                  }
-                );
-
-              if (found) {
-                return true;
-              }
-
-            }
-
-            return false;
-
-          });
-
-        const backendSongCount =
+        const songCount =
           Number(
             artist.song_count
           ) || 0;
 
-        const actualSongCount =
-          artistSongs.length;
-
         return {
-
           id: artist.id,
-
           name:
             artist.name ||
             'Unknown Artist',
-
           image:
             artist.image_url ||
             null,
-
           isPremium:
             Boolean(
               artist.is_premium
             ),
-
-          songCount:
-            backendSongCount ||
-            actualSongCount,
-
-          songs:
-            artistSongs,
-
+          isFavorite:
+            Boolean(
+              artist.is_favorite
+            ),
+          songCount,
         };
 
+      })
+      .sort((a, b) => {
+        // Favorites/Best Artists come first
+        if (a.isFavorite === b.isFavorite) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.isFavorite ? -1 : 1;
       });
 
   }, [
     artistsData,
-    songs,
   ]);
 
 
@@ -321,7 +271,7 @@ export default function Artists() {
 
 
   /* ==========================================================
-     PREMIUM ARTIST
+     PREMIUM ARTIST CHECK
   ========================================================== */
 
   const isPremiumArtist =
@@ -347,7 +297,7 @@ export default function Artists() {
   ========================================================== */
 
   const handlePlayArtist =
-    (
+    async (
       event,
       artist
     ) => {
@@ -355,17 +305,29 @@ export default function Artists() {
       event.preventDefault();
       event.stopPropagation();
 
-      if (
-        !artist?.songs ||
-        artist.songs.length === 0
-      ) {
+      if (artist.songCount === 0) {
         return;
       }
 
-      playSong(
-        artist.songs[0],
-        artist.songs
-      );
+      try {
+        setPlayingArtistId(artist.id);
+
+        const response = await api.get(`/songs/artist/${artist.id}`);
+        const artistSongs = Array.isArray(response.data?.songs)
+          ? response.data.songs
+          : [];
+
+        if (artistSongs.length > 0) {
+          playSong(
+            artistSongs[0],
+            artistSongs
+          );
+        }
+      } catch (err) {
+        console.error('Failed to load artist songs for playback:', err);
+      } finally {
+        setPlayingArtistId(null);
+      }
 
     };
 
@@ -713,8 +675,7 @@ export default function Artists() {
                 text-slate-500
               "
             >
-              Explore your favourite artists and
-              dive into their complete music collection.
+              Explore your favourite artists and click the diamond to set your Best Artists at the top.
             </p>
 
           </div>
@@ -890,25 +851,13 @@ export default function Artists() {
                     artist
                   );
 
-                const isCurrentArtistPlaying =
-                  artist.songs.some(
-                    (song) =>
-                      String(song.id) ===
-                        String(
-                          currentSong?.id
-                        ) &&
-                      isPlaying
-                  );
-
                 const isCurrentArtist =
-                  artist.songs.some(
-                    (song) =>
-                      String(song.id) ===
-                      String(
-                        currentSong?.id
-                      )
-                  );
+                  String(currentSong?.artist_id) === String(artist.id) ||
+                  (Array.isArray(currentSong?.artists) &&
+                    currentSong.artists.some((a) => String(a.id) === String(artist.id)));
 
+                const isCurrentArtistPlaying =
+                  isCurrentArtist && isPlaying;
 
                 return (
 
@@ -936,9 +885,11 @@ export default function Artists() {
                       sm:p-5
 
                       ${
-                        premium
-                          ? 'border-cyan-400/20 hover:border-cyan-300/35 hover:shadow-cyan-500/[0.08]'
-                          : 'border-slate-800/70 hover:border-emerald-400/20 hover:shadow-emerald-500/[0.08]'
+                        artist.isFavorite
+                          ? 'border-amber-400/30 hover:border-amber-400/50 hover:shadow-amber-500/[0.10]'
+                          : premium
+                            ? 'border-cyan-400/20 hover:border-cyan-300/35 hover:shadow-cyan-500/[0.08]'
+                            : 'border-slate-800/70 hover:border-emerald-400/20 hover:shadow-emerald-500/[0.08]'
                       }
                     `}
                   >
@@ -983,9 +934,11 @@ export default function Artists() {
                         group-hover:opacity-100
 
                         ${
-                          premium
-                            ? 'bg-cyan-400/20'
-                            : 'bg-emerald-400/15'
+                          artist.isFavorite
+                            ? 'bg-amber-400/20'
+                            : premium
+                              ? 'bg-cyan-400/20'
+                              : 'bg-emerald-400/15'
                         }
                       `}
                     />
@@ -1039,9 +992,11 @@ export default function Artists() {
                           ${
                             isCurrentArtistPlaying
                               ? 'bg-emerald-400/25 opacity-100 scale-110'
-                              : premium
-                                ? 'bg-cyan-400/10 opacity-60 group-hover:opacity-100 group-hover:scale-110'
-                                : 'bg-emerald-400/10 opacity-0 group-hover:opacity-100 group-hover:scale-110'
+                              : artist.isFavorite
+                                ? 'bg-amber-400/15 opacity-70 group-hover:opacity-100 group-hover:scale-110'
+                                : premium
+                                  ? 'bg-cyan-400/10 opacity-60 group-hover:opacity-100 group-hover:scale-110'
+                                  : 'bg-emerald-400/10 opacity-0 group-hover:opacity-100 group-hover:scale-110'
                           }
                         `}
                       />
@@ -1059,11 +1014,13 @@ export default function Artists() {
                           duration-700
 
                           ${
-                            isCurrentArtistPlaying
-                              ? 'bg-gradient-to-br from-emerald-300 via-emerald-400 to-cyan-400 shadow-lg shadow-emerald-500/30'
-                              : premium
-                                ? 'bg-gradient-to-br from-cyan-300/60 via-cyan-400/20 to-violet-400/40 group-hover:from-cyan-300 group-hover:via-cyan-400/50 group-hover:to-violet-400'
-                                : 'bg-gradient-to-br from-slate-700 via-slate-800 to-slate-700 group-hover:from-emerald-400/60 group-hover:via-emerald-400/20 group-hover:to-cyan-400/50'
+                            artist.isFavorite
+                              ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-400 shadow-lg shadow-amber-500/25'
+                              : isCurrentArtistPlaying
+                                ? 'bg-gradient-to-br from-emerald-300 via-emerald-400 to-cyan-400 shadow-lg shadow-emerald-500/30'
+                                : premium
+                                  ? 'bg-gradient-to-br from-cyan-300/60 via-cyan-400/20 to-violet-400/40 group-hover:from-cyan-300 group-hover:via-cyan-400/50 group-hover:to-violet-400'
+                                  : 'bg-gradient-to-br from-slate-700 via-slate-800 to-slate-700 group-hover:from-emerald-400/60 group-hover:via-emerald-400/20 group-hover:to-cyan-400/50'
                           }
                         `}
                       >
@@ -1157,48 +1114,66 @@ export default function Artists() {
 
 
                       {/* =================================================
-                          PREMIUM BADGE
+                          DIAMOND FAVORITE / BEST ARTIST BUTTON
                       ================================================== */}
 
-                      {premium && (
+                      <button
+                        type="button"
+                        onClick={(event) =>
+                          handleToggleFavorite(
+                            event,
+                            artist.id
+                          )
+                        }
+                        disabled={
+                          togglingFavoriteId === artist.id
+                        }
+                        className={`
+                          absolute
+                          right-1
+                          top-1
+                          z-10
+                          flex
+                          h-9
+                          w-9
+                          items-center
+                          justify-center
+                          rounded-full
+                          border
+                          backdrop-blur-xl
+                          transition-all
+                          duration-300
+                          hover:scale-110
+                          active:scale-90
+                          disabled:opacity-50
 
-                        <div
-                          className="
-                            absolute
-                            right-1
-                            top-1
-                            flex
-                            h-9
-                            w-9
-                            items-center
-                            justify-center
-                            rounded-full
-                            border
-                            border-cyan-200/30
-                            bg-slate-950/90
-                            shadow-xl
-                            shadow-cyan-500/20
-                            backdrop-blur-xl
-                            transition-all
-                            duration-500
-                            group-hover:scale-110
-                            group-hover:rotate-6
-                          "
-                          title="Premium Artist"
-                        >
+                          ${
+                            artist.isFavorite
+                              ? 'border-amber-300/50 bg-amber-400/20 text-amber-300 shadow-xl shadow-amber-500/20'
+                              : 'border-slate-700/60 bg-slate-950/80 text-slate-500 hover:border-amber-300/40 hover:text-amber-300'
+                          }
+                        `}
+                        title={
+                          artist.isFavorite
+                            ? 'Remove from Best Artists'
+                            : 'Set as Best Artist'
+                        }
+                      >
 
-                          <Diamond
-                            className="
-                              h-4
-                              w-4
-                              fill-cyan-300
-                              text-cyan-300
-                            "
-                          />
+                        <Diamond
+                          className={`
+                            h-4
+                            w-4
+                            transition-transform
+                            ${
+                              artist.isFavorite
+                                ? 'fill-amber-300 scale-105'
+                                : 'fill-transparent'
+                            }
+                          `}
+                        />
 
-                        </div>
-
-                      )}
+                      </button>
 
 
                       {/* =================================================
@@ -1214,7 +1189,8 @@ export default function Artists() {
                           )
                         }
                         disabled={
-                          artist.songs.length === 0
+                          artist.songCount === 0 ||
+                          playingArtistId === artist.id
                         }
                         className={`
                           absolute
@@ -1245,10 +1221,10 @@ export default function Artists() {
                           }
                         `}
                         title={
-                          artist.songs.length === 0
+                          artist.songCount === 0
                             ? 'No songs available'
                             : isCurrentArtistPlaying
-                              ? `Pause ${artist.name}`
+                              ? `Playing ${artist.name}`
                               : `Play ${artist.name}`
                         }
                       >
@@ -1412,20 +1388,6 @@ export default function Artists() {
                           {artist.name}
                         </h2>
 
-                        {premium && (
-
-                          <Diamond
-                            className="
-                              h-3
-                              w-3
-                              shrink-0
-                              fill-cyan-300
-                              text-cyan-300
-                            "
-                          />
-
-                        )}
-
                       </div>
 
 
@@ -1465,10 +1427,10 @@ export default function Artists() {
 
 
                       {/* =================================================
-                          PREMIUM LABEL
+                          BEST ARTIST / PREMIUM BADGE
                       ================================================== */}
 
-                      {premium && (
+                      {artist.isFavorite && (
 
                         <div
                           className="
@@ -1478,20 +1440,19 @@ export default function Artists() {
                             gap-1.5
                             rounded-full
                             border
-                            border-cyan-400/15
-                            bg-gradient-to-r
-                            from-cyan-400/[0.08]
-                            to-violet-400/[0.05]
+                            border-amber-400/20
+                            bg-amber-400/10
                             px-2.5
                             py-1
                           "
                         >
 
-                          <Sparkles
+                          <Diamond
                             className="
                               h-2.5
                               w-2.5
-                              text-cyan-300
+                              fill-amber-300
+                              text-amber-300
                             "
                           />
 
@@ -1501,10 +1462,10 @@ export default function Artists() {
                               font-black
                               uppercase
                               tracking-[0.16em]
-                              text-cyan-400
+                              text-amber-300
                             "
                           >
-                            Premium Artist
+                            Best Artist
                           </span>
 
                         </div>

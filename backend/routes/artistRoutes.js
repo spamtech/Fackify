@@ -6,12 +6,14 @@ import {
   createArtist,
   updateArtist,
   toggleArtistPremium,
+  toggleFavoriteArtist,
   deleteArtist,
 } from '../controllers/artistController.js';
 
 import {
   protect,
   adminOnly,
+  optionalAuth,
 } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -19,24 +21,36 @@ const router = express.Router();
 
 // ============================================================
 // GET ALL ARTISTS
-// USER + ADMIN
+// PUBLIC / USER (Optional Auth to identify user's favorites)
 // ============================================================
 
 router.get(
   '/',
-  protect,
+  optionalAuth,
   getArtists
 );
 
 
 // ============================================================
+// TOGGLE BEST / FAVORITE ARTIST
+// LOGGED IN USERS
+// ============================================================
+
+router.post(
+  '/:id/favorite',
+  protect,
+  toggleFavoriteArtist
+);
+
+
+// ============================================================
 // GET SINGLE ARTIST
-// USER + ADMIN
+// PUBLIC / USER
 // ============================================================
 
 router.get(
   '/:id',
-  protect,
+  optionalAuth,
   getArtistById
 );
 

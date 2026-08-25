@@ -1,6 +1,5 @@
 import React, {
   useEffect,
-  useMemo,
   useState,
 } from 'react';
 
@@ -45,43 +44,46 @@ export default function ArtistDetails() {
      STATE
   ============================================================ */
 
-  const [songs, setSongs] = useState([]);
+  const [artistData, setArtistData] = useState(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [artistSongs, setArtistSongs] = useState([]);
 
-  const [error, setError] =
-    useState('');
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState('');
 
 
   /* ============================================================
-     FETCH SONGS
+     FETCH ARTIST & ALL SONGS FOR ARTIST
   ============================================================ */
 
   useEffect(() => {
 
-    const fetchSongs = async () => {
+    let mounted = true;
+
+    const fetchArtistAndSongs = async () => {
 
       try {
 
         setLoading(true);
-
         setError('');
 
-        const response =
-          await api.get('/songs', {
-            params: {
-              limit: 100,
-              offset: 0,
-            },
-          });
+        const [artistRes, songsRes] = await Promise.all([
+          api.get(`/artists/${id}`).catch(() => null),
+          api.get(`/songs/artist/${id}`),
+        ]);
 
+        if (!mounted) {
+          return;
+        }
 
-        const allSongs =
-          response.data?.songs || [];
+        const fetchedArtist = artistRes?.data?.artist || null;
+        const fetchedSongs = Array.isArray(songsRes.data?.songs)
+          ? songsRes.data.songs
+          : [];
 
-
-        setSongs(allSongs);
+        setArtistData(fetchedArtist);
+        setArtistSongs(fetchedSongs);
 
       } catch (err) {
 
@@ -90,6 +92,10 @@ export default function ArtistDetails() {
           err
         );
 
+        if (!mounted) {
+          return;
+        }
+
         setError(
           err.response?.data?.message ||
           'Unable to load artist'
@@ -97,105 +103,58 @@ export default function ArtistDetails() {
 
       } finally {
 
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
 
       }
 
     };
 
+    if (id) {
+      fetchArtistAndSongs();
+    }
 
-    fetchSongs();
+    return () => {
+      mounted = false;
+    };
 
-  }, []);
-
-
-  /* ============================================================
-     FILTER ARTIST SONGS
-  ============================================================ */
-
-  const artistSongs = useMemo(() => {
-
-    return songs.filter((song) => {
-
-      /*
-       * Primary artist relationship.
-       */
-
-      if (
-        String(song.artist_id) ===
-        String(id)
-      ) {
-        return true;
-      }
-
-
-      /*
-       * Some backend responses may contain
-       * artist_ids for multiple artists.
-       */
-
-      if (
-        Array.isArray(song.artist_ids)
-      ) {
-
-        return song.artist_ids.some(
-          (artistId) =>
-            String(artistId) ===
-            String(id)
-        );
-
-      }
-
-
-      return false;
-
-    });
-
-  }, [songs, id]);
+  }, [id]);
 
 
   /* ============================================================
      ARTIST INFORMATION
   ============================================================ */
 
-  const artist =
-    artistSongs[0];
-
+  const firstSong = artistSongs[0];
 
   const artistName =
-    artist?.artist_name ||
-    artist?.artist ||
+    artistData?.name ||
+    firstSong?.artist_name ||
+    firstSong?.artist ||
     'Unknown Artist';
 
-
   const artistImage =
-    artist?.artist_image_url ||
-    artist?.thumbnail_url ||
+    artistData?.image_url ||
+    firstSong?.artist_image_url ||
+    firstSong?.thumbnail_url ||
     null;
 
-
-  /* ============================================================
-     PREMIUM ARTIST
-  ============================================================ */
-
-  const isPremiumArtist =
-    Boolean(
-      artist?.is_premium_artist ||
-      artist?.artist_is_premium ||
-      artist?.is_premium ||
-      artist?.premium_artist
-    );
+  const isPremiumArtist = Boolean(
+    artistData?.is_premium ||
+    firstSong?.is_premium_artist ||
+    firstSong?.artist_is_premium ||
+    firstSong?.is_premium
+  );
 
 
   /* ============================================================
      CURRENT SONG
   ============================================================ */
 
-  const isCurrentSong =
-    (song) =>
-      currentSong &&
-      String(currentSong.id) ===
-        String(song.id);
+  const isCurrentSong = (song) =>
+    currentSong &&
+    String(currentSong.id) === String(song.id);
 
 
   /* ============================================================
@@ -208,36 +167,10 @@ export default function ArtistDetails() {
       return;
     }
 
-
-    /*
-     * If the selected song is already
-     * playing, toggle play/pause.
-     */
-
-    if (
-      isCurrentSong(song)
-    ) {
-
+    if (isCurrentSong(song)) {
       togglePlay();
-
       return;
     }
-
-
-    /*
-     * Give PlayerContext the complete
-     * artist song list as the queue.
-     *
-     * This means:
-     *
-     * Song 1
-     *   ↓
-     * Song 2
-     *   ↓
-     * Song 3
-     *   ↓
-     * ...
-     */
 
     playSong(
       song,
@@ -253,38 +186,19 @@ export default function ArtistDetails() {
 
   const handlePlayAll = () => {
 
-    if (
-      !artistSongs.length
-    ) {
+    if (!artistSongs.length) {
       return;
     }
-
-
-    /*
-     * If one of this artist's songs
-     * is already the current song,
-     * simply resume/toggle playback.
-     */
 
     if (
       currentSong &&
       artistSongs.some(
-        (song) =>
-          String(song.id) ===
-          String(currentSong.id)
+        (song) => String(song.id) === String(currentSong.id)
       )
     ) {
-
       togglePlay();
-
       return;
     }
-
-
-    /*
-     * Start from first artist song
-     * and use ALL artist songs as queue.
-     */
 
     playSong(
       artistSongs[0],
@@ -301,9 +215,7 @@ export default function ArtistDetails() {
   const isArtistPlaying =
     currentSong &&
     artistSongs.some(
-      (song) =>
-        String(song.id) ===
-        String(currentSong.id)
+      (song) => String(song.id) === String(currentSong.id)
     ) &&
     isPlaying;
 
@@ -321,7 +233,6 @@ export default function ArtistDetails() {
         <div className="mx-auto max-w-5xl">
 
           <div className="h-8 w-24 animate-pulse rounded bg-slate-800" />
-
 
           <div className="mt-10 flex flex-col items-center gap-6 sm:flex-row sm:items-end">
 
@@ -352,7 +263,7 @@ export default function ArtistDetails() {
 
   if (
     error ||
-    !artist
+    (!artistData && artistSongs.length === 0)
   ) {
 
     return (
@@ -362,9 +273,7 @@ export default function ArtistDetails() {
         <div className="mx-auto max-w-5xl">
 
           <button
-            onClick={() =>
-              navigate('/artists')
-            }
+            onClick={() => navigate('/artists')}
             className="
               flex
               items-center
@@ -382,7 +291,6 @@ export default function ArtistDetails() {
             Back to Artists
 
           </button>
-
 
           <div
             className="
@@ -404,7 +312,6 @@ export default function ArtistDetails() {
                 text-slate-600
               "
             />
-
 
             <h2
               className="
@@ -460,7 +367,6 @@ export default function ArtistDetails() {
         "
       />
 
-
       <div
         className="
           relative
@@ -478,9 +384,7 @@ export default function ArtistDetails() {
         ===================================================== */}
 
         <button
-          onClick={() =>
-            navigate('/artists')
-          }
+          onClick={() => navigate('/artists')}
           className="
             flex
             items-center
@@ -565,7 +469,6 @@ export default function ArtistDetails() {
                   "
                 />
 
-
                 <div
                   className="
                     relative
@@ -617,7 +520,6 @@ export default function ArtistDetails() {
                   )}
 
                 </div>
-
 
                 {/* PREMIUM DIAMOND */}
 
@@ -698,7 +600,6 @@ export default function ArtistDetails() {
                     Artist
                   </p>
 
-
                   {isPremiumArtist && (
 
                     <span
@@ -759,11 +660,9 @@ export default function ArtistDetails() {
                   "
                 >
                   {artistSongs.length}{' '}
-
                   {artistSongs.length === 1
                     ? 'song'
                     : 'songs'}
-
                   {' '}on Fackify
                 </p>
 
@@ -863,7 +762,6 @@ export default function ArtistDetails() {
                 Songs
               </h2>
 
-
               <p
                 className="
                   mt-1
@@ -875,7 +773,6 @@ export default function ArtistDetails() {
               </p>
 
             </div>
-
 
             <div
               className="
@@ -909,8 +806,7 @@ export default function ArtistDetails() {
             {artistSongs.map(
               (song, index) => {
 
-                const active =
-                  isCurrentSong(song);
+                const active = isCurrentSong(song);
 
                 return (
 
@@ -959,9 +855,7 @@ export default function ArtistDetails() {
 
                         <button
                           type="button"
-                          onClick={() =>
-                            handlePlay(song)
-                          }
+                          onClick={() => handlePlay(song)}
                           className="
                             mx-auto
                             flex
@@ -1010,20 +904,13 @@ export default function ArtistDetails() {
 
                         <>
 
-                          <span
-                            className="
-                              group-hover:hidden
-                            "
-                          >
+                          <span className="group-hover:hidden">
                             {index + 1}
                           </span>
 
-
                           <button
                             type="button"
-                            onClick={() =>
-                              handlePlay(song)
-                            }
+                            onClick={() => handlePlay(song)}
                             className="
                               mx-auto
                               hidden
@@ -1137,7 +1024,6 @@ export default function ArtistDetails() {
                       >
                         {song.title}
                       </h3>
-
 
                       <p
                         className="

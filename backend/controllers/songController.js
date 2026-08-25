@@ -41,23 +41,16 @@ const normalizeArtistIds = (artistIds, artistId) => {
 
   /*
    * New frontend:
-   *
-   * artistIds: [
-   *   "uuid-1",
-   *   "uuid-2"
-   * ]
+   * artistIds: ["uuid-1", "uuid-2"]
    */
-
   if (Array.isArray(artistIds)) {
     ids = artistIds;
   }
 
   /*
    * Backward compatibility:
-   *
    * artistId: "uuid"
    */
-
   if (
     ids.length === 0 &&
     artistId
@@ -68,13 +61,11 @@ const normalizeArtistIds = (artistIds, artistId) => {
   /*
    * Remove null / undefined / empty values
    */
-
   ids = ids
     .map((id) => {
       if (id === null || id === undefined) {
         return null;
       }
-
       return String(id).trim();
     })
     .filter(Boolean);
@@ -82,7 +73,6 @@ const normalizeArtistIds = (artistIds, artistId) => {
   /*
    * Remove duplicate IDs
    */
-
   return [...new Set(ids)];
 };
 
@@ -115,10 +105,8 @@ const getArtistsByIds = async (
   );
 
   /*
-   * Preserve the exact order selected
-   * by the AdminDashboard.
+   * Preserve the exact order selected by the AdminDashboard.
    */
-
   const artistMap = new Map(
     result.rows.map((artist) => [
       String(artist.id),
@@ -177,7 +165,6 @@ const getOrCreateArtist = async (
       [cleanName]
     );
 
-
   if (
     existingArtist.rowCount > 0
   ) {
@@ -185,10 +172,8 @@ const getOrCreateArtist = async (
       existingArtist.rows[0];
 
     /*
-     * Only update image if a new one
-     * was actually supplied.
+     * Only update image if a new one was actually supplied.
      */
-
     if (
       cleanImage &&
       cleanImage !== artist.image_url
@@ -255,19 +240,6 @@ const getOrCreateArtist = async (
    RESOLVE ARTISTS
 ============================================================ */
 
-/*
- * IMPORTANT
- *
- * New AdminDashboard sends:
- *
- * artistIds: [...]
- *
- * Therefore artistIds ALWAYS gets priority.
- *
- * We NEVER create "Unknown Artist" when valid artistIds
- * have been selected.
- */
-
 const resolveArtists = async ({
   client,
   artistIds,
@@ -282,7 +254,6 @@ const resolveArtists = async ({
       artistId
     );
 
-
   /* ----------------------------------------------------------
      1. EXISTING ARTISTS SELECTED
   ---------------------------------------------------------- */
@@ -295,13 +266,6 @@ const resolveArtists = async ({
         client,
         normalizedIds
       );
-
-
-    /*
-     * If one or more IDs don't exist,
-     * reject the request instead of silently
-     * creating Unknown Artist.
-     */
 
     if (
       artists.length !==
@@ -331,16 +295,12 @@ const resolveArtists = async ({
       throw error;
     }
 
-
     return artists;
   }
 
 
   /* ----------------------------------------------------------
-     2. OLD FRONTEND
-     ----------------------------------------------------------
-     If no artist IDs were supplied, preserve compatibility
-     with the previous artist-name based system.
+     2. OLD FRONTEND FALLBACK
   ---------------------------------------------------------- */
 
   const fallbackArtist =
@@ -370,7 +330,6 @@ const insertSongArtistRelationships = async (
   ) {
     return;
   }
-
 
   for (const artist of artists) {
     await client.query(
@@ -408,25 +367,15 @@ const getSongWithArtists = async (
     await client.query(
       `
         SELECT
-
           s.id,
-
           s.title,
-
           s.artist,
-
           s.artist_id,
-
           s.source_url,
-
           s.source_type,
-
           s.thumbnail_url,
-
           s.created_by,
-
           s.created_at,
-
           COALESCE(
             JSON_AGG(
               DISTINCT JSONB_BUILD_OBJECT(
@@ -440,17 +389,12 @@ const getSongWithArtists = async (
             ),
             '[]'::json
           ) AS artists
-
         FROM songs s
-
         LEFT JOIN song_artists sa
           ON s.id = sa.song_id
-
         LEFT JOIN artists a
           ON sa.artist_id = a.id
-
         WHERE s.id = $1
-
         GROUP BY s.id
       `,
       [songId]
@@ -479,7 +423,6 @@ export const addSong =
         thumbnailUrl,
       } = req.body;
 
-
       /* ------------------------------------------------------
          VALIDATION
       ------------------------------------------------------ */
@@ -490,75 +433,41 @@ export const addSong =
         !thumbnailUrl
       ) {
         res.status(400);
-
         throw new Error(
           'Title, sourceUrl, and thumbnailUrl are required'
         );
       }
 
-
-      const cleanTitle =
-        String(title).trim();
-
-      const cleanSourceUrl =
-        String(sourceUrl).trim();
-
-      const cleanThumbnailUrl =
-        String(thumbnailUrl).trim();
-
+      const cleanTitle = String(title).trim();
+      const cleanSourceUrl = String(sourceUrl).trim();
+      const cleanThumbnailUrl = String(thumbnailUrl).trim();
 
       if (!cleanTitle) {
         res.status(400);
-
-        throw new Error(
-          'Song title cannot be empty'
-        );
+        throw new Error('Song title cannot be empty');
       }
-
 
       if (!cleanSourceUrl) {
         res.status(400);
-
-        throw new Error(
-          'Source URL cannot be empty'
-        );
+        throw new Error('Source URL cannot be empty');
       }
-
 
       if (!cleanThumbnailUrl) {
         res.status(400);
-
-        throw new Error(
-          'Thumbnail URL cannot be empty'
-        );
+        throw new Error('Thumbnail URL cannot be empty');
       }
 
-
-      const sourceType =
-        detectSource(
-          cleanSourceUrl
-        );
-
+      const sourceType = detectSource(cleanSourceUrl);
 
       /* ------------------------------------------------------
          TRANSACTION
       ------------------------------------------------------ */
 
-      const client =
-        await pool.connect();
-
+      const client = await pool.connect();
       let newSong = null;
 
       try {
-
-        await client.query(
-          'BEGIN'
-        );
-
-
-        /* ----------------------------------------------------
-           RESOLVE ARTISTS
-        ---------------------------------------------------- */
+        await client.query('BEGIN');
 
         const resolvedArtists =
           await resolveArtists({
@@ -569,33 +478,13 @@ export const addSong =
             artistImageUrl,
           });
 
-
-        if (
-          resolvedArtists.length === 0
-        ) {
-          const error =
-            new Error(
-              'At least one artist is required'
-            );
-
+        if (resolvedArtists.length === 0) {
+          const error = new Error('At least one artist is required');
           error.statusCode = 400;
-
           throw error;
         }
 
-
-        /*
-         * First selected artist becomes
-         * songs.artist_id.
-         */
-
-        const primaryArtist =
-          resolvedArtists[0];
-
-
-        /* ----------------------------------------------------
-           INSERT SONG
-        ---------------------------------------------------- */
+        const primaryArtist = resolvedArtists[0];
 
         const songResult =
           await client.query(
@@ -624,29 +513,16 @@ export const addSong =
             `,
             [
               cleanTitle,
-
               primaryArtist.name,
-
               primaryArtist.id,
-
               cleanSourceUrl,
-
               sourceType,
-
               cleanThumbnailUrl,
-
               req.user.id,
             ]
           );
 
-
-        newSong =
-          songResult.rows[0];
-
-
-        /* ----------------------------------------------------
-           INSERT ALL ARTIST RELATIONSHIPS
-        ---------------------------------------------------- */
+        newSong = songResult.rows[0];
 
         await insertSongArtistRelationships(
           client,
@@ -654,36 +530,20 @@ export const addSong =
           resolvedArtists
         );
 
-
-        /* ----------------------------------------------------
-           COMMIT
-        ---------------------------------------------------- */
-
-        await client.query(
-          'COMMIT'
-        );
+        await client.query('COMMIT');
 
       } catch (error) {
-
-        await client.query(
-          'ROLLBACK'
-        );
-
+        await client.query('ROLLBACK');
         throw error;
-
       } finally {
-
         client.release();
       }
 
-
       /* ------------------------------------------------------
          NOTIFICATIONS
-         Do this AFTER successful transaction.
       ------------------------------------------------------ */
 
       try {
-
         await pool.query(
           `
             INSERT INTO notifications
@@ -703,51 +563,37 @@ export const addSong =
           `,
           [
             'New song added',
-
             `"${newSong.title}" is now available`,
-
             'song',
           ]
         );
-
       } catch (notificationError) {
-
         console.error(
           'Notification creation failed:',
           notificationError
         );
       }
 
-
       /* ------------------------------------------------------
          GET FINAL SONG WITH ARTISTS
       ------------------------------------------------------ */
 
-      const finalSongClient =
-        await pool.connect();
-
+      const finalSongClient = await pool.connect();
       let finalSong;
 
       try {
-
         finalSong =
           await getSongWithArtists(
             finalSongClient,
             newSong.id
           );
-
       } finally {
-
         finalSongClient.release();
       }
 
-
       res.status(201).json({
-
         success: true,
-
         song: finalSong || newSong,
-
       });
     }
   );
@@ -769,7 +615,6 @@ export const getAllSongs =
             ).trim()}%`
           : null;
 
-
       const platform =
         req.query.platform &&
         req.query.platform !== 'all'
@@ -778,10 +623,8 @@ export const getAllSongs =
             ).trim()
           : null;
 
-
       const userId =
         req.user?.id || null;
-
 
       const requestedLimit =
         Number.parseInt(
@@ -789,13 +632,11 @@ export const getAllSongs =
           10
         );
 
-
       const requestedOffset =
         Number.parseInt(
           req.query.offset,
           10
         );
-
 
       const limit =
         Number.isInteger(
@@ -808,7 +649,6 @@ export const getAllSongs =
             )
           : 100;
 
-
       const offset =
         Number.isInteger(
           requestedOffset
@@ -817,32 +657,21 @@ export const getAllSongs =
           ? requestedOffset
           : 0;
 
-
       /* ------------------------------------------------------
          MAIN QUERY
       ------------------------------------------------------ */
 
       let sql = `
         SELECT
-
           s.id,
-
           s.title,
-
           s.artist,
-
           s.artist_id,
-
           s.source_url,
-
           s.source_type,
-
           s.thumbnail_url,
-
           s.created_by,
-
           s.created_at,
-
           COALESCE(
             JSON_AGG(
               DISTINCT JSONB_BUILD_OBJECT(
@@ -856,11 +685,9 @@ export const getAllSongs =
             ),
             '[]'::json
           ) AS artists,
-
           COUNT(
             DISTINCT l.user_id
           )::int AS likes_count,
-
           CASE
             WHEN $1::uuid IS NOT NULL
             AND EXISTS (
@@ -872,45 +699,30 @@ export const getAllSongs =
             THEN true
             ELSE false
           END AS is_liked
-
         FROM songs s
-
         LEFT JOIN song_artists sa
           ON s.id = sa.song_id
-
         LEFT JOIN artists a
           ON sa.artist_id = a.id
-
         LEFT JOIN likes l
           ON s.id = l.song_id
-
         WHERE 1 = 1
       `;
 
-
-      const params = [
-        userId,
-      ];
-
+      const params = [userId];
       let paramIndex = 2;
-
 
       /* ------------------------------------------------------
          SEARCH
       ------------------------------------------------------ */
 
       if (search) {
-
         sql += `
           AND (
             s.title ILIKE $${paramIndex}
-
             OR
-
             s.artist ILIKE $${paramIndex}
-
             OR
-
             EXISTS (
               SELECT 1
               FROM song_artists search_sa
@@ -921,57 +733,37 @@ export const getAllSongs =
             )
           )
         `;
-
         params.push(search);
-
         paramIndex++;
       }
-
 
       /* ------------------------------------------------------
          PLATFORM
       ------------------------------------------------------ */
 
       if (platform) {
-
         sql += `
-          AND s.source_type =
-              $${paramIndex}
+          AND s.source_type = $${paramIndex}
         `;
-
         params.push(platform);
-
         paramIndex++;
       }
 
-
       /* ------------------------------------------------------
-         GROUP
+         GROUP & ORDER
       ------------------------------------------------------ */
 
       sql += `
         GROUP BY s.id
-
-        ORDER BY
-          s.created_at DESC
-
+        ORDER BY s.created_at DESC
         LIMIT $${paramIndex}
-
         OFFSET $${paramIndex + 1}
       `;
 
-
       params.push(limit);
-
       params.push(offset);
 
-
-      const result =
-        await pool.query(
-          sql,
-          params
-        );
-
+      const result = await pool.query(sql, params);
 
       /* ------------------------------------------------------
          COUNT
@@ -980,102 +772,139 @@ export const getAllSongs =
       let countSql = `
         SELECT
           COUNT(*)::int AS total
-
         FROM songs s
-
         WHERE 1 = 1
       `;
 
-
       const countParams = [];
-
       let countParamIndex = 1;
 
-
       if (search) {
-
         countSql += `
           AND (
-            s.title ILIKE
-              $${countParamIndex}
-
+            s.title ILIKE $${countParamIndex}
             OR
-
-            s.artist ILIKE
-              $${countParamIndex}
-
+            s.artist ILIKE $${countParamIndex}
             OR
-
             EXISTS (
               SELECT 1
               FROM song_artists search_sa
               INNER JOIN artists search_a
-                ON search_sa.artist_id =
-                   search_a.id
-              WHERE search_sa.song_id =
-                    s.id
-              AND search_a.name ILIKE
-                  $${countParamIndex}
+                ON search_sa.artist_id = search_a.id
+              WHERE search_sa.song_id = s.id
+              AND search_a.name ILIKE $${countParamIndex}
             )
           )
         `;
-
         countParams.push(search);
-
         countParamIndex++;
       }
-
 
       if (platform) {
-
         countSql += `
-          AND s.source_type =
-              $${countParamIndex}
+          AND s.source_type = $${countParamIndex}
         `;
-
         countParams.push(platform);
-
         countParamIndex++;
       }
 
-
-      const countResult =
-        await pool.query(
-          countSql,
-          countParams
-        );
-
-
-      const total =
-        Number(
-          countResult.rows[0]?.total || 0
-        );
-
-
-      const hasMore =
-        offset +
-          result.rows.length <
-        total;
-
+      const countResult = await pool.query(countSql, countParams);
+      const total = Number(countResult.rows[0]?.total || 0);
+      const hasMore = offset + result.rows.length < total;
 
       res.status(200).json({
-
         success: true,
-
-        count:
-          result.rows.length,
-
+        count: result.rows.length,
         total,
-
         limit,
-
         offset,
-
         hasMore,
+        songs: result.rows,
+      });
+    }
+  );
 
-        songs:
-          result.rows,
 
+/* ============================================================
+   GET SONGS BY ARTIST ID (ALL SONGS FOR ARTIST)
+   GET /api/songs/artist/:artistId
+============================================================ */
+
+export const getSongsByArtistId =
+  asyncHandler(
+    async (req, res) => {
+      const { artistId } = req.params;
+      const userId = req.user?.id || null;
+
+      if (!artistId) {
+        res.status(400);
+        throw new Error('Artist ID is required');
+      }
+
+      const sql = `
+        SELECT
+          s.id,
+          s.title,
+          s.artist,
+          s.artist_id,
+          s.source_url,
+          s.source_type,
+          s.thumbnail_url,
+          s.created_by,
+          s.created_at,
+          COALESCE(
+            JSON_AGG(
+              DISTINCT JSONB_BUILD_OBJECT(
+                'id', a.id,
+                'name', a.name,
+                'image_url', a.image_url
+              )
+            )
+            FILTER (
+              WHERE a.id IS NOT NULL
+            ),
+            '[]'::json
+          ) AS artists,
+          COUNT(
+            DISTINCT l.user_id
+          )::int AS likes_count,
+          CASE
+            WHEN $2::uuid IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM likes
+              WHERE user_id = $2::uuid
+              AND song_id = s.id
+            )
+            THEN true
+            ELSE false
+          END AS is_liked
+        FROM songs s
+        LEFT JOIN song_artists sa
+          ON s.id = sa.song_id
+        LEFT JOIN artists a
+          ON sa.artist_id = a.id
+        LEFT JOIN likes l
+          ON s.id = l.song_id
+        WHERE (
+          s.artist_id = $1::uuid
+          OR EXISTS (
+            SELECT 1
+            FROM song_artists sa_sub
+            WHERE sa_sub.song_id = s.id
+            AND sa_sub.artist_id = $1::uuid
+          )
+        )
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
+      `;
+
+      const result = await pool.query(sql, [artistId, userId]);
+
+      res.status(200).json({
+        success: true,
+        count: result.rows.length,
+        songs: result.rows,
       });
     }
   );
@@ -1090,33 +919,21 @@ export const getTrendingSongs =
   asyncHandler(
     async (req, res) => {
 
-      const userId =
-        req.user?.id || null;
-
+      const userId = req.user?.id || null;
 
       const result =
         await pool.query(
           `
             SELECT
-
               s.id,
-
               s.title,
-
               s.artist,
-
               s.artist_id,
-
               s.source_url,
-
               s.source_type,
-
               s.thumbnail_url,
-
               s.created_by,
-
               s.created_at,
-
               COALESCE(
                 JSON_AGG(
                   DISTINCT JSONB_BUILD_OBJECT(
@@ -1130,11 +947,9 @@ export const getTrendingSongs =
                 ),
                 '[]'::json
               ) AS artists,
-
               COUNT(
                 DISTINCT l.user_id
               )::int AS likes_count,
-
               CASE
                 WHEN $1::uuid IS NOT NULL
                 AND EXISTS (
@@ -1146,43 +961,28 @@ export const getTrendingSongs =
                 THEN true
                 ELSE false
               END AS is_liked
-
             FROM songs s
-
             LEFT JOIN song_artists sa
               ON s.id = sa.song_id
-
             LEFT JOIN artists a
               ON sa.artist_id = a.id
-
             LEFT JOIN likes l
               ON s.id = l.song_id
-
             GROUP BY s.id
-
             ORDER BY
               COUNT(
                 DISTINCT l.user_id
               ) DESC,
-
               s.created_at DESC
-
             LIMIT 5
           `,
           [userId]
         );
 
-
       res.status(200).json({
-
         success: true,
-
-        count:
-          result.rows.length,
-
-        songs:
-          result.rows,
-
+        count: result.rows.length,
+        songs: result.rows,
       });
     }
   );
@@ -1197,24 +997,11 @@ export const deleteSong =
   asyncHandler(
     async (req, res) => {
 
-      const { id } =
-        req.params;
-
-
-      const client =
-        await pool.connect();
-
+      const { id } = req.params;
+      const client = await pool.connect();
 
       try {
-
-        await client.query(
-          'BEGIN'
-        );
-
-
-        /* ----------------------------------------------------
-           Remove artist relationships first
-        ---------------------------------------------------- */
+        await client.query('BEGIN');
 
         await client.query(
           `
@@ -1223,11 +1010,6 @@ export const deleteSong =
           `,
           [id]
         );
-
-
-        /* ----------------------------------------------------
-           Delete song
-        ---------------------------------------------------- */
 
         const result =
           await client.query(
@@ -1239,51 +1021,27 @@ export const deleteSong =
             [id]
           );
 
-
-        if (
-          result.rowCount === 0
-        ) {
-
-          await client.query(
-            'ROLLBACK'
-          );
-
+        if (result.rowCount === 0) {
+          await client.query('ROLLBACK');
           res.status(404);
-
-          throw new Error(
-            'Song not found'
-          );
+          throw new Error('Song not found');
         }
 
-
-        await client.query(
-          'COMMIT'
-        );
-
+        await client.query('COMMIT');
 
         res.status(200).json({
-
           success: true,
-
-          message:
-            'Song removed',
-
+          message: 'Song removed',
         });
 
       } catch (error) {
-
         try {
-          await client.query(
-            'ROLLBACK'
-          );
+          await client.query('ROLLBACK');
         } catch {
           // Ignore rollback error
         }
-
         throw error;
-
       } finally {
-
         client.release();
       }
     }
@@ -1299,9 +1057,7 @@ export const updateSong =
   asyncHandler(
     async (req, res) => {
 
-      const { id } =
-        req.params;
-
+      const { id } = req.params;
 
       const {
         title,
@@ -1313,7 +1069,6 @@ export const updateSong =
         thumbnailUrl,
       } = req.body;
 
-
       /* ------------------------------------------------------
          VALIDATION
       ------------------------------------------------------ */
@@ -1323,85 +1078,46 @@ export const updateSong =
         !sourceUrl ||
         !thumbnailUrl
       ) {
-
         res.status(400);
-
         throw new Error(
           'Title, sourceUrl, and thumbnailUrl are required'
         );
       }
 
-
-      const cleanTitle =
-        String(title).trim();
-
-      const cleanSourceUrl =
-        String(sourceUrl).trim();
-
-      const cleanThumbnailUrl =
-        String(thumbnailUrl).trim();
-
+      const cleanTitle = String(title).trim();
+      const cleanSourceUrl = String(sourceUrl).trim();
+      const cleanThumbnailUrl = String(thumbnailUrl).trim();
 
       if (!cleanTitle) {
-
         res.status(400);
-
-        throw new Error(
-          'Song title cannot be empty'
-        );
+        throw new Error('Song title cannot be empty');
       }
-
 
       if (!cleanSourceUrl) {
-
         res.status(400);
-
-        throw new Error(
-          'Source URL cannot be empty'
-        );
+        throw new Error('Source URL cannot be empty');
       }
-
 
       if (!cleanThumbnailUrl) {
-
         res.status(400);
-
-        throw new Error(
-          'Thumbnail URL cannot be empty'
-        );
+        throw new Error('Thumbnail URL cannot be empty');
       }
 
-
-      const sourceType =
-        detectSource(
-          cleanSourceUrl
-        );
-
+      const sourceType = detectSource(cleanSourceUrl);
 
       /* ------------------------------------------------------
          TRANSACTION
       ------------------------------------------------------ */
 
-      const client =
-        await pool.connect();
-
+      const client = await pool.connect();
 
       try {
-
-        await client.query(
-          'BEGIN'
-        );
-
-
-        /* ----------------------------------------------------
-           CHECK SONG
-        ---------------------------------------------------- */
+        await client.query('BEGIN');
 
         const existingSong =
           await client.query(
             `
-              SELECT
-                id
+              SELECT id
               FROM songs
               WHERE id = $1
               FOR UPDATE
@@ -1409,25 +1125,11 @@ export const updateSong =
             [id]
           );
 
-
-        if (
-          existingSong.rowCount === 0
-        ) {
-
-          const error =
-            new Error(
-              'Song not found'
-            );
-
+        if (existingSong.rowCount === 0) {
+          const error = new Error('Song not found');
           error.statusCode = 404;
-
           throw error;
         }
-
-
-        /* ----------------------------------------------------
-           RESOLVE ARTISTS
-        ---------------------------------------------------- */
 
         const resolvedArtists =
           await resolveArtists({
@@ -1438,70 +1140,36 @@ export const updateSong =
             artistImageUrl,
           });
 
-
-        if (
-          resolvedArtists.length === 0
-        ) {
-
-          const error =
-            new Error(
-              'At least one artist is required'
-            );
-
+        if (resolvedArtists.length === 0) {
+          const error = new Error('At least one artist is required');
           error.statusCode = 400;
-
           throw error;
         }
 
-
-        const primaryArtist =
-          resolvedArtists[0];
-
-
-        /* ----------------------------------------------------
-           UPDATE SONG
-        ---------------------------------------------------- */
+        const primaryArtist = resolvedArtists[0];
 
         await client.query(
           `
             UPDATE songs
-
             SET
               title = $1,
-
               artist = $2,
-
               artist_id = $3,
-
               source_url = $4,
-
               source_type = $5,
-
               thumbnail_url = $6
-
             WHERE id = $7
           `,
           [
             cleanTitle,
-
             primaryArtist.name,
-
             primaryArtist.id,
-
             cleanSourceUrl,
-
             sourceType,
-
             cleanThumbnailUrl,
-
             id,
           ]
         );
-
-
-        /* ----------------------------------------------------
-           REMOVE OLD ARTIST RELATIONSHIPS
-        ---------------------------------------------------- */
 
         await client.query(
           `
@@ -1511,21 +1179,11 @@ export const updateSong =
           [id]
         );
 
-
-        /* ----------------------------------------------------
-           INSERT NEW ARTIST RELATIONSHIPS
-        ---------------------------------------------------- */
-
         await insertSongArtistRelationships(
           client,
           id,
           resolvedArtists
         );
-
-
-        /* ----------------------------------------------------
-           GET UPDATED SONG
-        ---------------------------------------------------- */
 
         const updatedSong =
           await getSongWithArtists(
@@ -1533,39 +1191,21 @@ export const updateSong =
             id
           );
 
-
-        /* ----------------------------------------------------
-           COMMIT
-        ---------------------------------------------------- */
-
-        await client.query(
-          'COMMIT'
-        );
-
+        await client.query('COMMIT');
 
         res.status(200).json({
-
           success: true,
-
-          song:
-            updatedSong,
-
+          song: updatedSong,
         });
 
       } catch (error) {
-
         try {
-          await client.query(
-            'ROLLBACK'
-          );
+          await client.query('ROLLBACK');
         } catch {
           // Ignore rollback error
         }
-
         throw error;
-
       } finally {
-
         client.release();
       }
     }

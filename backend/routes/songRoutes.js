@@ -3,6 +3,7 @@ import express from 'express';
 import {
   getAllSongs,
   getTrendingSongs,
+  getSongsByArtistId,
   addSong,
   updateSong,
   deleteSong,
@@ -28,6 +29,11 @@ router.get(
   getTrendingSongs
 );
 
+router.get(
+  '/artist/:artistId',
+  optionalAuth,
+  getSongsByArtistId
+);
 
 router.get(
   '/',

@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-
+import { asyncHandler } from '../utils/asyncHandler.js';
 // ============================================================
 // GET ALL ARTISTS
 // GET /api/artists
@@ -395,3 +395,83 @@ export const deleteArtist = async (req, res) => {
     client.release();
   }
 };
+
+/* ============================================================
+   GET ALL ARTISTS (Favorites pinned to top)
+   GET /api/artists
+============================================================ */
+export const getAllArtists = asyncHandler(async (req, res) => {
+  const userId = req.user?.id || null;
+
+  const sql = `
+    SELECT
+      a.id,
+      a.name,
+      a.image_url,
+      a.is_premium,
+      COUNT(DISTINCT sa.song_id)::int AS song_count,
+      CASE
+        WHEN $1::uuid IS NOT NULL AND EXISTS (
+          SELECT 1
+          FROM user_favorite_artists ufa
+          WHERE ufa.user_id = $1::uuid
+          AND ufa.artist_id = a.id
+        ) THEN true
+        ELSE false
+      END AS is_favorite
+    FROM artists a
+    LEFT JOIN song_artists sa ON a.id = sa.artist_id
+    GROUP BY a.id
+    ORDER BY
+      is_favorite DESC,
+      a.name ASC
+  `;
+
+  const result = await pool.query(sql, [userId]);
+
+  res.status(200).json({
+    success: true,
+    artists: result.rows,
+  });
+});
+
+/* ============================================================
+   TOGGLE FAVORITE / BEST ARTIST
+   POST /api/artists/:id/favorite
+============================================================ */
+export const toggleFavoriteArtist = asyncHandler(async (req, res) => {
+  const { id: artistId } = req.params;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401);
+    throw new Error('Authentication required');
+  }
+
+  const check = await pool.query(
+    `SELECT 1 FROM user_favorite_artists WHERE user_id = $1 AND artist_id = $2`,
+    [userId, artistId]
+  );
+
+  let isFavorite = false;
+
+  if (check.rowCount > 0) {
+    await pool.query(
+      `DELETE FROM user_favorite_artists WHERE user_id = $1 AND artist_id = $2`,
+      [userId, artistId]
+    );
+    isFavorite = false;
+  } else {
+    await pool.query(
+      `INSERT INTO user_favorite_artists (user_id, artist_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [userId, artistId]
+    );
+    isFavorite = true;
+  }
+
+  res.status(200).json({
+    success: true,
+    is_favorite: isFavorite,
+    message: isFavorite ? 'Artist marked as Best Artist' : 'Removed from Best Artists',
+  });
+});
