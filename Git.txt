@@ -1,0 +1,6 @@
+git status
+git diff
+git add .
+git commit -m "Add enhanced max player queue volume and floating music animations"
+git push origin main
+git status

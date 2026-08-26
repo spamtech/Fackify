@@ -34,6 +34,9 @@ const DEFAULT_COVER =
 export default function Playlists() {
   const {
     playSong,
+    currentSong,
+    queue,
+    isPlaying,
   } = usePlayer();
 
   // ============================================================
@@ -105,6 +108,20 @@ export default function Playlists() {
     useState(null);
 
   // ============================================================
+  // CURRENT PLAYING PLAYLIST
+  // ============================================================
+
+  /*
+   * This keeps track of the playlist that was explicitly
+   * started from a playlist card.
+   *
+   * It does NOT change the player queue or playback logic.
+   * It is only used for the visual playing animation.
+   */
+  const [activePlaylistId, setActivePlaylistId] =
+    useState(null);
+
+  // ============================================================
   // GET CURRENT USER
   // ============================================================
 
@@ -172,6 +189,16 @@ export default function Playlists() {
     fetchCurrentUser();
     fetchPlaylists();
   }, []);
+
+  // ============================================================
+  // CLEAR PLAYLIST ANIMATION WHEN PLAYBACK STOPS
+  // ============================================================
+
+  useEffect(() => {
+    if (!isPlaying) {
+      setActivePlaylistId(null);
+    }
+  }, [isPlaying]);
 
   // ============================================================
   // FETCH SINGLE PLAYLIST
@@ -390,6 +417,17 @@ export default function Playlists() {
           )
         );
 
+        /*
+         * If the deleted playlist was currently
+         * showing the playing animation, clear it.
+         */
+        if (
+          activePlaylistId ===
+          selectedPlaylist.id
+        ) {
+          setActivePlaylistId(null);
+        }
+
         setSelectedPlaylist(null);
         setShowDeleteModal(false);
       }
@@ -443,6 +481,14 @@ export default function Playlists() {
 
     const songs =
       selectedPlaylist.songs;
+
+    /*
+     * Mark this playlist as the active
+     * playlist for the visual animation.
+     */
+    setActivePlaylistId(
+      selectedPlaylist.id
+    );
 
     playSong(
       songs[0],
@@ -1357,6 +1403,14 @@ export default function Playlists() {
                       if (
                         songs.length
                       ) {
+                        /*
+                         * Start the visual animation
+                         * for this playlist.
+                         */
+                        setActivePlaylistId(
+                          playlist.id
+                        );
+
                         playSong(
                           songs[0],
                           songs
@@ -1376,6 +1430,16 @@ export default function Playlists() {
                       openDeleteModal(
                         playlist
                       )
+                    }
+                    isPlaying={
+                      isPlaying
+                    }
+                    currentSong={
+                      currentSong
+                    }
+                    queue={queue}
+                    activePlaylistId={
+                      activePlaylistId
                     }
                   />
                 )
@@ -1455,6 +1519,10 @@ function PlaylistCard({
   onPlay,
   onEdit,
   onDelete,
+  isPlaying,
+  currentSong,
+  queue,
+  activePlaylistId,
 }) {
   const songCount =
     playlist.song_count ||
@@ -1468,6 +1536,72 @@ function PlaylistCard({
   const isPublic =
     Boolean(
       playlist.is_public
+    );
+
+  // ==========================================================
+  // DETECT IF THIS PLAYLIST IS CURRENTLY PLAYING
+  // ==========================================================
+
+  /*
+   * First priority:
+   * playlist explicitly started from this card.
+   */
+  const explicitlyActive =
+    activePlaylistId ===
+      playlist.id &&
+    isPlaying;
+
+  /*
+   * Second priority:
+   * If the playlist contains its songs,
+   * compare the current player queue with
+   * the playlist songs.
+   *
+   * This allows the animation to remain
+   * correct when the current song changes
+   * to the next song in the playlist.
+   */
+  const playlistSongIds = useMemo(
+    () =>
+      (playlist.songs || [])
+        .map((song) => song?.id)
+        .filter(Boolean),
+    [playlist.songs]
+  );
+
+  const queueSongIds = useMemo(
+    () =>
+      (queue || [])
+        .map((song) => song?.id)
+        .filter(Boolean),
+    [queue]
+  );
+
+  const currentSongIsInPlaylist =
+    Boolean(
+      currentSong?.id &&
+      playlistSongIds.includes(
+        currentSong.id
+      )
+    );
+
+  const queueMatchesPlaylist =
+    playlistSongIds.length > 0 &&
+    queueSongIds.length > 0 &&
+    playlistSongIds.length ===
+      queueSongIds.length &&
+    playlistSongIds.every((id) =>
+      queueSongIds.includes(id)
+    );
+
+  const isPlaylistPlaying =
+    isPlaying &&
+    (
+      explicitlyActive ||
+      (
+        currentSongIsInPlaylist &&
+        queueMatchesPlaylist
+      )
     );
 
   return (
@@ -1522,6 +1656,80 @@ function PlaylistCard({
 
         </button>
 
+        {/* ====================================================
+            PLAYING ANIMATION
+            ==================================================== */}
+
+        {isPlaylistPlaying && (
+          <div
+            className="
+              absolute
+              left-3
+              top-3
+              z-20
+              flex
+              items-end
+              gap-[3px]
+              rounded-lg
+              border
+              border-emerald-400/20
+              bg-slate-950/85
+              px-2.5
+              py-2
+              shadow-xl
+              shadow-emerald-500/10
+              backdrop-blur-md
+            "
+            aria-label="Playlist is playing"
+          >
+
+            <span
+              className="
+                h-2
+                w-[3px]
+                origin-bottom
+                rounded-full
+                bg-emerald-400
+                animate-[playlistBar1_0.65s_ease-in-out_infinite]
+              "
+            />
+
+            <span
+              className="
+                h-4
+                w-[3px]
+                origin-bottom
+                rounded-full
+                bg-emerald-400
+                animate-[playlistBar2_0.8s_ease-in-out_infinite]
+              "
+            />
+
+            <span
+              className="
+                h-3
+                w-[3px]
+                origin-bottom
+                rounded-full
+                bg-emerald-400
+                animate-[playlistBar3_0.55s_ease-in-out_infinite]
+              "
+            />
+
+            <span
+              className="
+                h-5
+                w-[3px]
+                origin-bottom
+                rounded-full
+                bg-emerald-400
+                animate-[playlistBar4_0.75s_ease-in-out_infinite]
+              "
+            />
+
+          </div>
+        )}
+
         {/* Play */}
 
         <button
@@ -1530,7 +1738,7 @@ function PlaylistCard({
             event.stopPropagation();
             onPlay();
           }}
-          className="
+          className={`
             absolute
             bottom-3
             right-3
@@ -1538,21 +1746,26 @@ function PlaylistCard({
             flex
             h-10
             w-10
-            translate-y-2
             items-center
             justify-center
             rounded-full
             bg-emerald-400
             text-slate-950
-            opacity-0
             shadow-xl
             shadow-black/40
             transition
-            group-hover:translate-y-0
-            group-hover:opacity-100
             hover:bg-emerald-300
-          "
-          aria-label="Play playlist"
+            ${
+              isPlaylistPlaying
+                ? 'translate-y-0 opacity-100'
+                : 'translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100'
+            }
+          `}
+          aria-label={
+            isPlaylistPlaying
+              ? 'Playlist is playing'
+              : 'Play playlist'
+          }
         >
           <Play className="ml-0.5 h-4 w-4 fill-current" />
         </button>
@@ -1571,7 +1784,19 @@ function PlaylistCard({
             className="min-w-0 flex-1 text-left"
           >
 
-            <h3 className="truncate text-sm font-bold text-white">
+            <h3
+              className={`
+                truncate
+                text-sm
+                font-bold
+                transition
+                ${
+                  isPlaylistPlaying
+                    ? 'text-emerald-300'
+                    : 'text-white'
+                }
+              `}
+            >
               {playlist.name}
             </h3>
 
@@ -1584,6 +1809,21 @@ function PlaylistCard({
                   : 'songs'}
               </p>
 
+              {/* PLAYING TEXT */}
+
+              {isPlaylistPlaying && (
+                <>
+                  <span className="text-[9px] text-slate-700">
+                    •
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                    Playing
+                  </span>
+                </>
+              )}
+
               {/* ADMIN BADGE */}
 
               {isAdminPlaylist && (
@@ -1593,6 +1833,7 @@ function PlaylistCard({
                   </span>
 
                   <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-purple-400">
+
                     <ShieldCheck className="h-2.5 w-2.5" />
 
                     Admin
@@ -1610,6 +1851,7 @@ function PlaylistCard({
                     </span>
 
                     <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+
                       <Globe2 className="h-2.5 w-2.5" />
 
                       Public

@@ -19,9 +19,11 @@ import {
   ListMusic,
   X,
   Trash2,
+  Maximize2,
 } from 'lucide-react';
 
 import { usePlayer } from '../context/PlayerContext';
+import MaxPlayer from './MaxPlayer';
 
 /* =========================================================
    TIME FORMATTER
@@ -175,6 +177,12 @@ export default function MediaPlayer() {
   ========================================================= */
 
   const [showQueue, setShowQueue] = useState(false);
+
+  /* =========================================================
+     MAX PLAYER STATE
+  ========================================================= */
+
+  const [showMaxPlayer, setShowMaxPlayer] = useState(false);
 
   /* =========================================================
      ARTIST
@@ -1770,7 +1778,7 @@ export default function MediaPlayer() {
             </div>
 
             {/* =================================================
-                RIGHT — QUEUE + VIDEO + VOLUME
+                RIGHT — QUEUE + VIDEO + MAXIMIZE + VOLUME
             ================================================== */}
 
             <div
@@ -1916,6 +1924,38 @@ export default function MediaPlayer() {
                 ) : (
                   <VideoOff className="h-4 w-4" />
                 )}
+              </button>
+
+              {/* =================================================
+                  MAXIMIZE — opens MaxPlayer
+              ================================================== */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowMaxPlayer(true)
+                }
+                title="Open Full Player"
+                aria-label="Open Full Player"
+                className="
+                  flex
+                  h-9
+                  w-9
+                  items-center
+                  justify-center
+                  rounded-xl
+                  border
+                  border-white/[0.06]
+                  bg-white/[0.03]
+                  text-slate-500
+                  transition-all
+                  duration-200
+                  hover:bg-white/[0.05]
+                  hover:text-white
+                  active:scale-90
+                "
+              >
+                <Maximize2 className="h-4 w-4" />
               </button>
 
               <div
@@ -2366,6 +2406,34 @@ export default function MediaPlayer() {
                 ) : (
                   <VideoOff className="h-3.5 w-3.5" />
                 )}
+              </button>
+
+              {/* Mobile Maximize */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowMaxPlayer(true)
+                }
+                title="Open Full Player"
+                aria-label="Open Full Player"
+                className="
+                  flex
+                  h-8
+                  w-8
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-lg
+                  border
+                  border-white/[0.06]
+                  bg-white/[0.03]
+                  text-slate-500
+                  transition
+                  active:scale-90
+                "
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
               </button>
 
               {/* Play */}
@@ -2825,6 +2893,17 @@ export default function MediaPlayer() {
           </div>
         </div>
       </div>
+
+      {/* =====================================================
+          MAX PLAYER
+      ====================================================== */}
+
+      {showMaxPlayer && (
+        <MaxPlayer
+          isOpen={showMaxPlayer}
+          onClose={() => setShowMaxPlayer(false)}
+        />
+      )}
 
       {/* =====================================================
           ANIMATIONS
