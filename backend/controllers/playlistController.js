@@ -16,6 +16,8 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
       p.name,
       p.description,
       p.is_public,
+      COALESCE(p.is_favorite, false) AS is_favorite,
+      COALESCE(p.is_premium, false) AS is_premium,
       p.user_id,
       p.created_at,
       p.updated_at,
@@ -63,10 +65,13 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
 
     GROUP BY
       p.id,
+      p.is_favorite,
+      p.is_premium,
       u.username,
       u.role
 
     ORDER BY
+      COALESCE(p.is_favorite, false) DESC,
       p.created_at DESC
     `,
     [req.user.id]
@@ -77,7 +82,6 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
     playlists: result.rows,
   });
 });
-
 
 // ============================================================
 // CREATE PLAYLIST
@@ -1102,3 +1106,66 @@ export const updatePlaylistVisibility =
       },
     });
   });
+
+
+  // ============================================================
+// TOGGLE FAVORITE / PREMIUM PLAYLIST
+// POST /api/playlists/:id/favorite
+// Private
+// ============================================================
+
+export const togglePlaylistFavorite = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { is_favorite, is_premium } = req.body;
+
+  // 1. Check if playlist exists
+  const checkResult = await query(
+    `
+    SELECT id, is_favorite, is_premium
+    FROM playlists
+    WHERE id = $1
+    `,
+    [id]
+  );
+
+  if (checkResult.rowCount === 0) {
+    res.status(404);
+    throw new Error('Playlist not found');
+  }
+
+  const currentFavorite = Boolean(checkResult.rows[0].is_favorite);
+  
+  // Use payload if provided, otherwise flip existing boolean
+  const nextStatus = typeof is_favorite === 'boolean' 
+    ? is_favorite 
+    : (typeof is_premium === 'boolean' ? is_premium : !currentFavorite);
+
+  // 2. Update status in PostgreSQL DB
+  const updateResult = await query(
+    `
+    UPDATE playlists
+    SET 
+      is_favorite = $1,
+      is_premium = $1,
+      updated_at = NOW()
+    WHERE id = $2
+    RETURNING 
+      id,
+      name,
+      description,
+      is_public,
+      is_favorite,
+      is_premium,
+      user_id,
+      created_at,
+      updated_at
+    `,
+    [nextStatus, id]
+  );
+
+  res.status(200).json({
+    success: true,
+    message: nextStatus ? 'Playlist marked as VIP / Favorite' : 'Playlist removed from VIP / Favorite',
+    playlist: updateResult.rows[0],
+  });
+});

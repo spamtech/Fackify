@@ -6,6 +6,7 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteNotification,
+  clearAllNotifications,
 } from '../controllers/notificationController.js';
 
 import {
@@ -51,6 +52,16 @@ router.put(
 );
 
 // ============================================================
+// CLEAR ALL NOTIFICATIONS
+// IMPORTANT: KEEP BEFORE /:id
+// ============================================================
+
+router.delete(
+  '/clear-all',
+  clearAllNotifications
+);
+
+// ============================================================
 // MARK ONE AS READ
 // PUT /api/notifications/:id/read
 // ============================================================
@@ -61,7 +72,7 @@ router.put(
 );
 
 // ============================================================
-// DELETE NOTIFICATION
+// DELETE ONE NOTIFICATION
 // DELETE /api/notifications/:id
 // ============================================================
 
