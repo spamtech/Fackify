@@ -2,6 +2,7 @@ import express from 'express';
 
 import {
   getUserProfile,
+  getUserProfileSummary,
   updateUserProfile,
   changePassword,
 } from '../controllers/userController.js';
@@ -21,6 +22,11 @@ router.use(protect);
 // ============================================================
 // PROFILE
 // ============================================================
+
+router.get(
+  '/profile/summary',
+  getUserProfileSummary
+);
 
 router.get(
   '/profile',

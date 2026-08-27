@@ -11,6 +11,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  CopyCheck,
   Edit2,
   Eye,
   ExternalLink,
@@ -170,6 +171,17 @@ const AdminDashboard = () => {
 
 
   // ==========================================================
+  // ARTIST SONGS INSPECTOR MODAL & DUPLICATES
+  // ==========================================================
+
+  const [showArtistSongsModal, setShowArtistSongsModal] = useState(false);
+  const [selectedArtistForSongs, setSelectedArtistForSongs] = useState(null);
+  const [artistSongsList, setArtistSongsList] = useState([]);
+  const [loadingArtistSongs, setLoadingArtistSongs] = useState(false);
+  const [deletingModalSongId, setDeletingModalSongId] = useState(null);
+
+
+  // ==========================================================
   // USER INSPECTOR
   // ==========================================================
 
@@ -203,7 +215,7 @@ const AdminDashboard = () => {
   const getArtistId = (artist) => {
     if (!artist) return '';
     if (typeof artist !== 'object') return artist;
-    return artist.id ?? artist.artist_id ?? artist.artistId ?? '';
+    return artist.id ?? artist._id ?? artist.artist_id ?? artist.artistId ?? '';
   };
 
   const getArtistName = (artist) => {
@@ -245,12 +257,12 @@ const AdminDashboard = () => {
       });
     }
 
-    if (song.artist_id || song.artistId) {
-      const id = song.artist_id ?? song.artistId;
+    if (song.artist_id || song.artistId || song.artist?._id || song.artist?.id) {
+      const id = song.artist_id ?? song.artistId ?? song.artist?._id ?? song.artist?.id;
       const found = artists.find(
         (artist) => normalizeId(getArtistId(artist)) === normalizeId(id)
       );
-      return [found || { id, name: song.artist_name || song.artist || 'Unknown Artist' }];
+      return [found || { id, name: song.artist_name || song.artist?.name || song.artist || 'Unknown Artist' }];
     }
 
     if (song.artist_name || song.artist) {
@@ -331,7 +343,6 @@ const AdminDashboard = () => {
     if (Number.isNaN(lastActiveTime)) return false;
 
     const elapsed = Date.now() - lastActiveTime;
-    // Online if active within the last 2 minutes
     return elapsed >= 0 && elapsed <= 2 * 60 * 1000;
   };
 
@@ -661,6 +672,28 @@ const AdminDashboard = () => {
 
 
   // ==========================================================
+  // DUPLICATE HELPER (TITLE MATCHING)
+  // ==========================================================
+
+  const duplicateTitleSet = useMemo(() => {
+    const counts = {};
+    artistSongsList.forEach((song) => {
+      const normTitle = (song.title || '').trim().toLowerCase();
+      if (normTitle) {
+        counts[normTitle] = (counts[normTitle] || 0) + 1;
+      }
+    });
+
+    const duplicates = new Set();
+    Object.entries(counts).forEach(([title, count]) => {
+      if (count > 1) duplicates.add(title);
+    });
+
+    return duplicates;
+  }, [artistSongsList]);
+
+
+  // ==========================================================
   // SONG MODAL
   // ==========================================================
 
@@ -743,8 +776,9 @@ const AdminDashboard = () => {
         artistIds: formData.artistIds,
       };
 
+      const songId = editingSong?.id || editingSong?._id;
       if (editingSong) {
-        await api.put(`/songs/${editingSong.id}`, payload);
+        await api.put(`/songs/${songId}`, payload);
       } else {
         await api.post('/songs', payload);
       }
@@ -761,7 +795,7 @@ const AdminDashboard = () => {
 
 
   // ==========================================================
-  // DELETE SONG
+  // DELETE SONG (GLOBAL)
   // ==========================================================
 
   const handleDeleteSong = async (songId) => {
@@ -779,6 +813,94 @@ const AdminDashboard = () => {
       console.error('Delete song error:', err);
       alert(err?.response?.data?.message || 'Failed to delete song.');
     }
+  };
+
+
+  // ==========================================================
+  // ARTIST SONGS VIEWER & MODAL DUPLICATE REMOVAL
+  // ==========================================================
+
+  const handleOpenArtistSongs = async (artist) => {
+    const artistId = getArtistId(artist);
+    if (!artistId) return;
+
+    setSelectedArtistForSongs(artist);
+    setShowArtistSongsModal(true);
+    setLoadingArtistSongs(true);
+
+    try {
+      // Attempt endpoint or fallback to songs filter
+      const res = await api.get(`/songs/artist/${artistId}`).catch(() => null);
+      let list = [];
+
+      if (res && res.data) {
+        list = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data.songs)
+          ? res.data.songs
+          : Array.isArray(res.data.data)
+          ? res.data.data
+          : [];
+      } else {
+        list = songs.filter((s) => {
+          const currentArtists = getSongArtists(s);
+          return currentArtists.some(
+            (a) =>
+              normalizeId(getArtistId(a)) === normalizeId(artistId) ||
+              getArtistName(a).toLowerCase() === getArtistName(artist).toLowerCase()
+          );
+        });
+      }
+
+      setArtistSongsList(list);
+    } catch (err) {
+      console.error('Error fetching artist songs:', err);
+      const fallbackList = songs.filter((s) => {
+        const currentArtists = getSongArtists(s);
+        return currentArtists.some(
+          (a) =>
+            normalizeId(getArtistId(a)) === normalizeId(artistId) ||
+            getArtistName(a).toLowerCase() === getArtistName(artist).toLowerCase()
+        );
+      });
+      setArtistSongsList(fallbackList);
+    } finally {
+      setLoadingArtistSongs(false);
+    }
+  };
+
+  const handleDeleteArtistDuplicateSong = async (songId) => {
+    if (!songId) return;
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this duplicate song from the artist catalog?'
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingModalSongId(songId);
+      await api.delete(`/songs/${songId}`);
+
+      // Instantly update modal state
+      setArtistSongsList((prev) =>
+        prev.filter((s) => (s.id || s._id) !== songId)
+      );
+
+      // Refresh global dashboard data
+      await fetchAdminData(false);
+    } catch (err) {
+      console.error('Delete duplicate song error:', err);
+      alert(err?.response?.data?.message || 'Failed to delete song.');
+    } finally {
+      setDeletingModalSongId(null);
+    }
+  };
+
+  const closeArtistSongsModal = () => {
+    setShowArtistSongsModal(false);
+    setSelectedArtistForSongs(null);
+    setArtistSongsList([]);
+    setDeletingModalSongId(null);
   };
 
 
@@ -1327,93 +1449,95 @@ const AdminDashboard = () => {
 
                   <div className="space-y-2">
 
-                    {filteredSongs.map((song, index) => (
+                    {filteredSongs.map((song, index) => {
+                      const songId = song.id || song._id;
 
-                      <div
-                        key={song.id || `${song.title}-${index}`}
-                        className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-3 sm:p-4 transition"
-                      >
+                      return (
+                        <div
+                          key={songId || `${song.title}-${index}`}
+                          className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-3 sm:p-4 transition"
+                        >
 
-                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3">
 
-                          <img
-                            src={
-                              song.thumbnail_url ||
-                              song.thumbnailUrl ||
-                              defaultThumbnail
-                            }
-                            alt=""
-                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-800 shrink-0"
-                          />
+                            <img
+                              src={
+                                song.thumbnail_url ||
+                                song.thumbnailUrl ||
+                                defaultThumbnail
+                              }
+                              alt=""
+                              className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-800 shrink-0"
+                            />
 
 
-                          <div className="min-w-0 flex-1">
+                            <div className="min-w-0 flex-1">
 
-                            <h3 className="text-sm font-bold text-slate-100 truncate">
-                              {song.title || 'Untitled Song'}
-                            </h3>
+                              <h3 className="text-sm font-bold text-slate-100 truncate">
+                                {song.title || 'Untitled Song'}
+                              </h3>
 
-                            <p className="text-[11px] text-slate-400 truncate mt-1">
-                              {getSongArtistNames(song).join(', ') || 'Unknown Artist'}
-                            </p>
+                              <p className="text-[11px] text-slate-400 truncate mt-1">
+                                {getSongArtistNames(song).join(', ') || 'Unknown Artist'}
+                              </p>
 
-                            <p className="text-[9px] text-slate-600 truncate mt-1">
-                              {song.source_url || song.sourceUrl || 'No source'}
-                            </p>
+                              <p className="text-[9px] text-slate-600 truncate mt-1">
+                                {song.source_url || song.sourceUrl || 'No source'}
+                              </p>
+
+                            </div>
+
+
+                            <div className="hidden md:flex items-center gap-1.5">
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(song)}
+                                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 transition cursor-pointer"
+                                title="Edit song"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSong(songId)}
+                                className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/10 text-slate-300 hover:text-rose-400 transition cursor-pointer"
+                                title="Delete song"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+
+                            </div>
 
                           </div>
 
 
-                          <div className="hidden md:flex items-center gap-1.5">
+                          <div className="flex md:hidden items-center justify-end gap-2 mt-3">
 
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(song)}
-                              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 transition cursor-pointer"
-                              title="Edit song"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-[10px] font-semibold cursor-pointer"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Edit2 className="w-3 h-3" />
+                              Edit
                             </button>
 
                             <button
                               type="button"
-                              onClick={() => handleDeleteSong(song.id)}
-                              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/10 text-slate-300 hover:text-rose-400 transition cursor-pointer"
-                              title="Delete song"
+                              onClick={() => handleDeleteSong(songId)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 text-rose-400 text-[10px] font-semibold cursor-pointer"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3 h-3" />
+                              Delete
                             </button>
 
                           </div>
 
                         </div>
-
-
-                        <div className="flex md:hidden items-center justify-end gap-2 mt-3">
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(song)}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-[10px] font-semibold cursor-pointer"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSong(song.id)}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 text-rose-400 text-[10px] font-semibold cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Delete
-                          </button>
-
-                        </div>
-
-                      </div>
-
-                    ))}
+                      );
+                    })}
 
                   </div>
 
@@ -1438,7 +1562,7 @@ const AdminDashboard = () => {
                     </h2>
 
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Manage artists used across your music catalog.
+                      Manage artists, inspect their songs, and clean up duplicate tracks.
                     </p>
                   </div>
 
@@ -1486,59 +1610,75 @@ const AdminDashboard = () => {
                       return (
                         <div
                           key={normalizeId(artistId)}
-                          className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition"
+                          className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition flex flex-col justify-between"
                         >
 
-                          <div className="flex items-center gap-3">
+                          <div>
+                            <div className="flex items-center gap-3">
 
-                            <img
-                              src={getArtistImage(artist)}
-                              alt=""
-                              className="w-14 h-14 rounded-full object-cover border border-slate-700 shrink-0"
-                              onError={(e) => {
-                                e.currentTarget.src = defaultArtistImage;
-                              }}
-                            />
+                              <img
+                                src={getArtistImage(artist)}
+                                alt=""
+                                className="w-14 h-14 rounded-full object-cover border border-slate-700 shrink-0"
+                                onError={(e) => {
+                                  e.currentTarget.src = defaultArtistImage;
+                                }}
+                              />
 
-                            <div className="min-w-0 flex-1">
+                              <div className="min-w-0 flex-1">
 
-                              <h3 className="font-bold text-slate-100 truncate">
-                                {getArtistName(artist)}
-                              </h3>
+                                <h3 className="font-bold text-slate-100 truncate">
+                                  {getArtistName(artist)}
+                                </h3>
 
-                              <p className="text-[10px] text-slate-500 mt-1">
-                                {songCount} songs
-                              </p>
+                                <p className="text-[10px] text-slate-500 mt-1">
+                                  {songCount} songs
+                                </p>
+
+                              </div>
 
                             </div>
-
                           </div>
 
 
-                          <div className="flex items-center gap-2 mt-4">
+                          <div className="space-y-2 mt-4">
 
+                            {/* VIEW ALL SONGS BUTTON */}
                             <button
                               type="button"
-                              onClick={() => handleOpenEditArtistModal(artist)}
-                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold cursor-pointer"
+                              onClick={() => handleOpenArtistSongs(artist)}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-xs font-bold transition cursor-pointer"
                             >
-                              <Edit2 className="w-3 h-3" />
-                              Edit
+                              <ListMusic className="w-3.5 h-3.5" />
+                              All Songs & Clean Duplicates
                             </button>
 
-                            <button
-                              type="button"
-                              disabled={deleting}
-                              onClick={() => handleDeleteArtist(artist)}
-                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                            >
-                              {deleting ? (
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3 h-3" />
-                              )}
-                              Delete
-                            </button>
+                            <div className="flex items-center gap-2">
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditArtistModal(artist)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold cursor-pointer"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={deleting}
+                                onClick={() => handleDeleteArtist(artist)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                              >
+                                {deleting ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3" />
+                                )}
+                                Delete
+                              </button>
+
+                            </div>
 
                           </div>
 
@@ -2221,6 +2361,220 @@ const AdminDashboard = () => {
 
           </>
 
+        )}
+
+
+        {/* ====================================================
+            ARTIST SONGS & DUPLICATE CLEANER MODAL
+        ==================================================== */}
+
+        {showArtistSongsModal && (
+          <div className="fixed inset-0 z-[65] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+
+              {/* MODAL HEADER */}
+              <div className="p-5 border-b border-slate-800 shrink-0">
+
+                <div className="flex items-start justify-between gap-4">
+
+                  <div className="flex items-center gap-3 min-w-0">
+
+                    <img
+                      src={getArtistImage(selectedArtistForSongs)}
+                      alt=""
+                      className="w-12 h-12 rounded-full object-cover border border-slate-700 shrink-0"
+                      onError={(e) => {
+                        e.currentTarget.src = defaultArtistImage;
+                      }}
+                    />
+
+                    <div className="min-w-0">
+
+                      <h2 className="text-base sm:text-lg font-bold text-slate-100 truncate">
+                        {getArtistName(selectedArtistForSongs)}
+                      </h2>
+
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {artistSongsList.length} total songs found
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={closeArtistSongsModal}
+                    className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                </div>
+
+                {duplicateTitleSet.size > 0 && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>
+                      Potential duplicate songs detected with identical titles. You can safely remove extra entries below.
+                    </span>
+                  </div>
+                )}
+
+              </div>
+
+              {/* MODAL CONTENT */}
+              <div className="overflow-y-auto p-5 flex-1">
+
+                {loadingArtistSongs ? (
+
+                  <div className="py-16 flex flex-col items-center justify-center">
+
+                    <RefreshCw className="w-7 h-7 text-amber-400 animate-spin mb-3" />
+
+                    <p className="text-sm font-semibold text-slate-300">
+                      Loading artist songs...
+                    </p>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Scanning song database for duplicates.
+                    </p>
+
+                  </div>
+
+                ) : artistSongsList.length === 0 ? (
+
+                  <div className="py-16 text-center">
+
+                    <div className="w-14 h-14 mx-auto bg-slate-800 rounded-2xl flex items-center justify-center mb-3">
+                      <Music2 className="w-7 h-7 text-slate-600" />
+                    </div>
+
+                    <h3 className="text-sm font-semibold text-slate-300">
+                      No songs found for this artist
+                    </h3>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      No songs are currently associated with {getArtistName(selectedArtistForSongs)}.
+                    </p>
+
+                  </div>
+
+                ) : (
+
+                  <div className="space-y-2">
+
+                    {artistSongsList.map((song, index) => {
+                      const songId = song.id || song._id;
+                      const normTitle = (song.title || '').trim().toLowerCase();
+                      const isDuplicate = duplicateTitleSet.has(normTitle);
+                      const isDeleting = deletingModalSongId === songId;
+
+                      return (
+                        <div
+                          key={songId || index}
+                          className={`p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+                            isDuplicate
+                              ? 'bg-rose-950/20 border-rose-500/40 hover:border-rose-500/60'
+                              : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+
+                            <img
+                              src={song.thumbnail_url || song.thumbnailUrl || defaultThumbnail}
+                              alt=""
+                              className="w-10 h-10 rounded-lg object-cover border border-slate-800 shrink-0"
+                            />
+
+                            <div className="min-w-0 flex-1">
+
+                              <div className="flex items-center gap-2">
+
+                                <p className="font-semibold text-xs sm:text-sm text-slate-100 truncate">
+                                  {song.title || 'Untitled Song'}
+                                </p>
+
+                                {isDuplicate && (
+                                  <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-[9px] font-bold text-rose-400">
+                                    <CopyCheck className="w-2.5 h-2.5" />
+                                    Duplicate
+                                  </span>
+                                )}
+
+                              </div>
+
+                              <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {song.source_url || song.sourceUrl || 'No source URL'}
+                              </p>
+
+                            </div>
+
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+
+                            {song.source_url && (
+                              <a
+                                href={song.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open source"
+                                className="p-2 text-slate-500 hover:text-emerald-400 hover:bg-slate-900 rounded-lg transition"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={isDeleting}
+                              onClick={() => handleDeleteArtistDuplicateSong(songId)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                              title="Delete this track"
+                            >
+                              {isDeleting ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3 h-3" />
+                              )}
+                              Delete
+                            </button>
+
+                          </div>
+
+                        </div>
+                      );
+                    })}
+
+                  </div>
+
+                )}
+
+              </div>
+
+              {/* MODAL FOOTER */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between gap-3 shrink-0">
+
+                <div className="text-[10px] text-slate-500">
+                  Deleting a track removes it completely from songs and playlists.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeArtistSongsModal}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                >
+                  Close
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
         )}
 
 
