@@ -7,6 +7,7 @@ import {
   getMe,
   updateActivity,
   googleLogin,
+  updateProfile, // <-- 1. Import the new controller
 } from '../controllers/authController.js';
 
 import { protect } from '../middleware/authMiddleware.js';
@@ -34,16 +35,24 @@ router.post('/login', loginUser);
  * POST /api/auth/logout
  */
 router.post('/logout', logoutUser);
+
 /**
  * Google Login / Signup
  * POST /api/auth/google
  */
 router.post('/google', googleLogin);
+
 /**
  * Get currently authenticated user
  * GET /api/auth/me
  */
 router.get('/me', protect, getMe);
+
+/**
+ * Update user profile (username & bio)
+ * PUT /api/auth/profile
+ */
+router.put('/profile', protect, updateProfile); // <-- 2. Register the PUT route
 
 /**
  * User activity heartbeat

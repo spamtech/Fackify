@@ -1,13 +1,14 @@
 import express from 'express';
 
 import {
-  getArtists,
+  getAllArtists,
   getArtistById,
   createArtist,
   updateArtist,
   toggleArtistPremium,
   toggleFavoriteArtist,
   deleteArtist,
+  getMyPremiumArtistsCount, // <-- 1. Import new controller
 } from '../controllers/artistController.js';
 
 import {
@@ -18,93 +19,34 @@ import {
 
 const router = express.Router();
 
+// ============================================================
+// GET ALL ARTISTS (Favorites pinned to top)
+// ============================================================
+router.get('/', optionalAuth, getAllArtists);
 
 // ============================================================
-// GET ALL ARTISTS
-// PUBLIC / USER (Optional Auth to identify user's favorites)
+// GET USER'S FAVORITED PREMIUM ARTISTS COUNT
+// LOGGED IN USERS ONLY (Must be placed above /:id)
 // ============================================================
-
-router.get(
-  '/',
-  optionalAuth,
-  getArtists
-);
-
+router.get('/my-premium-count', protect, getMyPremiumArtistsCount);
 
 // ============================================================
 // TOGGLE BEST / FAVORITE ARTIST
 // LOGGED IN USERS
 // ============================================================
-
-router.post(
-  '/:id/favorite',
-  protect,
-  toggleFavoriteArtist
-);
-
+router.post('/:id/favorite', protect, toggleFavoriteArtist);
 
 // ============================================================
 // GET SINGLE ARTIST
-// PUBLIC / USER
 // ============================================================
-
-router.get(
-  '/:id',
-  optionalAuth,
-  getArtistById
-);
-
+router.get('/:id', optionalAuth, getArtistById);
 
 // ============================================================
-// CREATE ARTIST
-// ADMIN ONLY
+// ADMIN ROUTES
 // ============================================================
-
-router.post(
-  '/',
-  protect,
-  adminOnly,
-  createArtist
-);
-
-
-// ============================================================
-// UPDATE ARTIST
-// ADMIN ONLY
-// ============================================================
-
-router.put(
-  '/:id',
-  protect,
-  adminOnly,
-  updateArtist
-);
-
-
-// ============================================================
-// TOGGLE PREMIUM
-// ADMIN ONLY
-// ============================================================
-
-router.put(
-  '/:id/premium',
-  protect,
-  adminOnly,
-  toggleArtistPremium
-);
-
-
-// ============================================================
-// DELETE ARTIST
-// ADMIN ONLY
-// ============================================================
-
-router.delete(
-  '/:id',
-  protect,
-  adminOnly,
-  deleteArtist
-);
-
+router.post('/', protect, adminOnly, createArtist);
+router.put('/:id', protect, adminOnly, updateArtist);
+router.put('/:id/premium', protect, adminOnly, toggleArtistPremium);
+router.delete('/:id', protect, adminOnly, deleteArtist);
 
 export default router;

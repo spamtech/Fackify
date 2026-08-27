@@ -475,3 +475,23 @@ export const toggleFavoriteArtist = asyncHandler(async (req, res) => {
     message: isFavorite ? 'Artist marked as Best Artist' : 'Removed from Best Artists',
   });
 });
+
+export const getMyPremiumArtistsCount = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+
+  const result = await pool.query(
+    `
+    SELECT COUNT(DISTINCT a.id)::int AS count
+    FROM artists a
+    INNER JOIN user_favorite_artists ufa ON ufa.artist_id = a.id
+    WHERE ufa.user_id = $1
+      AND a.is_premium = true
+    `,
+    [userId]
+  );
+
+  res.status(200).json({
+    success: true,
+    count: result.rows[0]?.count || 0,
+  });
+});

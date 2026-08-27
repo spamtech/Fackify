@@ -5,12 +5,10 @@ import { query } from '../config/db.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateToken } from '../utils/generateToken.js';
 
-
 // Google OAuth client
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID
 );
-
 
 // ============================================================
 // REGISTER USER
@@ -89,7 +87,6 @@ export const registerUser = asyncHandler(async (req, res) => {
   });
 });
 
-
 // ============================================================
 // LOGIN USER / ADMIN
 // POST /api/auth/login
@@ -146,7 +143,7 @@ export const loginUser = asyncHandler(async (req, res) => {
     UPDATE users
     SET last_login = NOW()
     WHERE id = $1
-    RETURNING id, username, email, role, created_at, last_login
+    RETURNING id, username, email, role, bio, created_at, last_login
     `,
     [user.id]
   );
@@ -161,7 +158,6 @@ export const loginUser = asyncHandler(async (req, res) => {
     user: loggedInUser,
   });
 });
-
 
 // ============================================================
 // GOOGLE LOGIN
@@ -242,6 +238,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       email,
       password,
       role,
+      bio,
       created_at,
       last_login
     FROM users
@@ -260,18 +257,12 @@ export const googleLogin = asyncHandler(async (req, res) => {
   if (existingResult.rows.length > 0) {
     const existingUser = existingResult.rows[0];
 
-    // IMPORTANT:
-    // Never change an existing user's role here.
-    //
-    // If the account is admin, it remains admin.
-    // If the account is user, it remains user.
-
     const updatedResult = await query(
       `
       UPDATE users
       SET last_login = NOW()
       WHERE id = $1
-      RETURNING id, username, email, role, created_at, last_login
+      RETURNING id, username, email, role, bio, created_at, last_login
       `,
       [existingUser.id]
     );
@@ -322,9 +313,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
       )}`;
     }
 
-    // Google account:
-    // password = NULL
-    // role = user
     const newUserResult = await query(
       `
       INSERT INTO users
@@ -342,6 +330,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
         username,
         email,
         role,
+        bio,
         created_at,
         last_login
       `,
@@ -354,20 +343,14 @@ export const googleLogin = asyncHandler(async (req, res) => {
     user = newUserResult.rows[0];
   }
 
-  // ----------------------------------------------------------
-  // Create Fackify JWT
-  // ----------------------------------------------------------
-
+  // Generate Fackify JWT + HTTP-only cookie
   generateToken(res, user);
 
-  // Do NOT return JWT to frontend.
-  // It exists only in the HTTP-only cookie.
   res.status(200).json({
     success: true,
     user,
   });
 });
-
 
 // ============================================================
 // LOGOUT
@@ -393,7 +376,6 @@ export const logoutUser = asyncHandler(async (req, res) => {
   });
 });
 
-
 // ============================================================
 // GET CURRENT USER
 // GET /api/auth/me
@@ -413,6 +395,7 @@ export const getMe = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      bio,
       created_at,
       last_login
     FROM users
@@ -433,14 +416,82 @@ export const getMe = asyncHandler(async (req, res) => {
 });
 
 // ============================================================
+// UPDATE USER PROFILE (USERNAME & BIO)
+// PUT /api/auth/profile
+// ACCESS: Private
+// ============================================================
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  const { username, bio } = req.body;
+
+  if (!userId) {
+    res.status(401);
+    throw new Error('Authentication required');
+  }
+
+  const cleanUsername = username ? username.trim() : null;
+  const cleanBio = bio !== undefined ? bio.trim() : null;
+
+  if (cleanUsername && cleanUsername.length < 3) {
+    res.status(400);
+    throw new Error('Username must be at least 3 characters');
+  }
+
+  // If username is changing, ensure it is not taken by another user
+  if (cleanUsername) {
+    const existing = await query(
+      `
+      SELECT id
+      FROM users
+      WHERE LOWER(username) = LOWER($1) AND id != $2
+      LIMIT 1
+      `,
+      [cleanUsername, userId]
+    );
+
+    if (existing.rows.length > 0) {
+      res.status(400);
+      throw new Error('Username is already taken');
+    }
+  }
+
+  // Update profile with COALESCE to keep existing values if unchanged
+  const updateResult = await query(
+    `
+    UPDATE users
+    SET
+      username = COALESCE($1, username),
+      bio = COALESCE($2, bio)
+    WHERE id = $3
+    RETURNING
+      id,
+      username,
+      email,
+      role,
+      bio,
+      created_at,
+      last_login
+    `,
+    [cleanUsername, cleanBio, userId]
+  );
+
+  if (updateResult.rows.length === 0) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
+    user: updateResult.rows[0],
+  });
+});
+
+// ============================================================
 // BLOCK / UNBLOCK USER
 // PUT /api/admin/users/:id/block
 // Admin only
-//
-// Body:
-// {
-//   "blocked": true
-// }
 // ============================================================
 
 export const updateUserBlockStatus = asyncHandler(async (req, res) => {
@@ -489,7 +540,6 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
   });
 });
 
-
 // ============================================================
 // DELETE USER
 // DELETE /api/admin/users/:id
@@ -522,15 +572,11 @@ export const deleteUser = asyncHandler(async (req, res) => {
 
   const user = userResult.rows[0];
 
-  // Extra protection:
-  // Do not allow deleting another admin from this endpoint.
   if (user.role === 'admin') {
     res.status(403);
     throw new Error('Admin accounts cannot be deleted from this dashboard');
   }
 
-  // Delete dependent records first.
-  // This avoids foreign-key errors if your DB does not use CASCADE.
   await query('DELETE FROM likes WHERE user_id = $1', [id]);
 
   await query(
@@ -553,7 +599,6 @@ export const deleteUser = asyncHandler(async (req, res) => {
     [id]
   );
 
-  // Finally delete user
   const deleteResult = await query(
     `
     DELETE FROM users

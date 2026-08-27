@@ -19,6 +19,7 @@ import Dashboard from './pages/Dashboard';
 import LikedSongs from './pages/LikedSongs';
 import Playlists from './pages/Playlists';
 import Notifications from './pages/Notifications';
+import Profile from './pages/Profile';
 
 /* ============================================================
    ARTIST PAGES
@@ -101,6 +102,14 @@ export default function App() {
                   <Route
                     path="/dashboard"
                     element={<Dashboard />}
+                  />
+
+
+                  {/* Profile */}
+
+                  <Route
+                    path="/profile"
+                    element={<Profile />}
                   />
 
 
