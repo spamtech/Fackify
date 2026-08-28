@@ -7,7 +7,7 @@ dotenv.config();
 async function resetAdmin() {
   const username = 'admin';
   const email = 'dipnarayanghosh6@gmail.com';   // Put your desired email here
-  const password = 'Dip@1410';      // Put your desired password here
+  const password = 'Dip@14102005#$^&';      // Put your desired password here
 
   try {
     const salt = await bcrypt.genSalt(10);
