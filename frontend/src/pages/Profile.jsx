@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   User,
   Mail,
@@ -102,15 +102,30 @@ const DEFAULT_COVER =
 
 const ARTIST_STORAGE_KEY = 'fackify_premium_artist_ids';
 
+const formatListeningTime = (totalSeconds = 0) => {
+  const seconds = Number(totalSeconds) || 0;
+  if (seconds <= 0) return '0s';
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hrs > 0) {
+    return `${hrs}h ${mins}m`;
+  }
+  if (mins > 0) {
+    return `${mins}m ${secs > 0 ? `${secs}s` : ''}`.trim();
+  }
+  return `${secs}s`;
+};
+
 export default function Profile() {
   const auth = useAuth() || {};
   const user = auth.user || null;
   const logout = auth.logout || (() => {});
 
-  // Global Player Context Integration
   const { playSong, currentSong, isPlaying } = usePlayer();
 
-  // Modals & UI Controls
   const [copied, setCopied] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -119,18 +134,16 @@ export default function Profile() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Favorites sub-tab state ('tracks' | 'artists')
   const [favTab, setFavTab] = useState('artists');
 
-  // Data State
   const [likedSongs, setLikedSongs] = useState([]);
   const [allCatalogSongs, setAllCatalogSongs] = useState([]);
   const [premiumArtists, setPremiumArtists] = useState([]);
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [recentlyPlayed, setRecentlyPlayed] = useState([]);
   const [catalogCount, setCatalogCount] = useState(0);
+  const [listeningSeconds, setListeningSeconds] = useState(0);
 
-  // Customization Themes
   const [selectedGlow, setSelectedGlow] = useState(() => {
     return localStorage.getItem('profile_glow') || 'emerald';
   });
@@ -154,7 +167,6 @@ export default function Profile() {
     }
   }, [user]);
 
-  // Playlist Cover Resolver
   const getPlaylistCover = (playlist) => {
     if (playlist?.cover_url) return playlist.cover_url;
     if (playlist?.thumbnail_url) return playlist.thumbnail_url;
@@ -165,174 +177,223 @@ export default function Profile() {
   };
 
   // ============================================================
-  // FETCH USER DATA, PLAYLISTS & PREMIUM ARTISTS
+  // LOAD LIVE PROFILE DATA FROM BACKEND
   // ============================================================
-  useEffect(() => {
-    let isMounted = true;
+  const fetchProfileData = useCallback(async () => {
+    try {
+      setDataLoading(true);
 
-    const fetchProfileData = async () => {
-      const currentUserId = user?.id || user?._id;
-      if (!currentUserId) {
-        setDataLoading(false);
-        return;
-      }
-
-      try {
-        setDataLoading(true);
-
-        // Fetch likes, playlists, songs catalog, and artists in parallel
-        const [likesRes, playlistsRes, allSongsRes, artistsRes] = await Promise.allSettled([
+      const [summaryRes, profileRes, likesRes, playlistsRes, allSongsRes, artistsRes] =
+        await Promise.allSettled([
+          api.get('/users/profile/summary'),
+          api.get('/users/profile'),
           api.get('/songs/liked').catch(() => api.get('/likes')),
           api.get('/playlists').catch(() => api.get('/playlists/my-playlists')),
           api.get('/songs'),
           api.get('/artists').catch(() => api.get('/artists/premium')),
         ]);
 
-        if (!isMounted) return;
+      // 1. EXTRACT REAL LISTENING TIME FROM DATABASE
+      let dbSeconds = 0;
 
-        // 1. Liked Songs
-        let fetchedLiked = [];
-        if (likesRes.status === 'fulfilled') {
-          const lData = likesRes.value?.data;
-          const songs =
-            lData?.songs ||
-            lData?.likedSongs ||
-            lData?.rows ||
-            lData?.data ||
-            (Array.isArray(lData) ? lData : []);
-          fetchedLiked = Array.isArray(songs) ? songs : [];
-          setLikedSongs(fetchedLiked);
+      if (summaryRes.status === 'fulfilled') {
+        const sData = summaryRes.value?.data?.data || summaryRes.value?.data;
+        if (sData?.stats?.totalListeningSeconds !== undefined) {
+          dbSeconds = Number(sData.stats.totalListeningSeconds);
+        } else if (sData?.user?.total_listening_seconds !== undefined) {
+          dbSeconds = Number(sData.user.total_listening_seconds);
         }
+      }
 
-        // 2. Playlists
-        if (playlistsRes.status === 'fulfilled') {
-          const pData = playlistsRes.value?.data;
-          const list =
-            pData?.playlists ||
-            pData?.rows ||
-            pData?.data ||
-            (Array.isArray(pData) ? pData : []);
-
-          const selfPlaylists = Array.isArray(list)
-            ? list.filter((p) => {
-                const owner = p.user_id || p.userId || p.user?._id || p.user;
-                return !owner || String(owner) === String(currentUserId);
-              })
-            : [];
-          setUserPlaylists(selfPlaylists);
+      if (!dbSeconds && profileRes.status === 'fulfilled') {
+        const pData = profileRes.value?.data?.profile || profileRes.value?.data?.user || profileRes.value?.data;
+        if (pData?.total_listening_seconds !== undefined) {
+          dbSeconds = Number(pData.total_listening_seconds);
         }
+      }
 
-        // 3. Songs Catalog & Recently Played
-        let catalog = [];
-        if (allSongsRes.status === 'fulfilled') {
-          const sData = allSongsRes.value?.data;
-          catalog = Array.isArray(sData)
-            ? sData
-            : Array.isArray(sData?.songs)
-            ? sData.songs
-            : Array.isArray(sData?.data)
-            ? sData.data
-            : [];
-          setAllCatalogSongs(catalog);
-          setCatalogCount(catalog.length);
-          setRecentlyPlayed(catalog.slice(0, 5));
+      setListeningSeconds(dbSeconds);
+
+      // 2. EXTRACT TOTAL CATALOG COUNT
+      let catalog = [];
+      let totalSongsCount = 0;
+
+      if (allSongsRes.status === 'fulfilled') {
+        const sData = allSongsRes.value?.data;
+        catalog = Array.isArray(sData)
+          ? sData
+          : Array.isArray(sData?.songs)
+          ? sData.songs
+          : Array.isArray(sData?.data)
+          ? sData.data
+          : [];
+
+        totalSongsCount =
+          sData?.totalSongs ||
+          sData?.totalCount ||
+          sData?.total ||
+          sData?.count ||
+          catalog.length;
+
+        setAllCatalogSongs(catalog);
+        setCatalogCount(totalSongsCount);
+      }
+
+      if (!totalSongsCount && summaryRes.status === 'fulfilled') {
+        const sData = summaryRes.value?.data?.data || summaryRes.value?.data;
+        if (sData?.stats?.totalCatalogSongs) {
+          setCatalogCount(Number(sData.stats.totalCatalogSongs));
         }
+      }
 
-        // 4. Resolve Exact Premium Artists Selected in Artist Tab
-        let storedPremiumArtistIds = [];
-        try {
-          const rawStored =
-            localStorage.getItem(ARTIST_STORAGE_KEY) ||
-            localStorage.getItem('premium_artists') ||
-            localStorage.getItem('fackify_premium_artists');
-          storedPremiumArtistIds = rawStored ? JSON.parse(rawStored) : [];
-        } catch {
-          storedPremiumArtistIds = [];
-        }
+      // 3. LIKED SONGS
+      let fetchedLiked = [];
+      if (likesRes.status === 'fulfilled') {
+        const lData = likesRes.value?.data;
+        const songs =
+          lData?.songs ||
+          lData?.likedSongs ||
+          lData?.rows ||
+          lData?.data ||
+          (Array.isArray(lData) ? lData : []);
+        fetchedLiked = Array.isArray(songs) ? songs : [];
+      } else if (summaryRes.status === 'fulfilled' && summaryRes.value?.data?.data?.likedSongs) {
+        fetchedLiked = summaryRes.value.data.data.likedSongs;
+      }
+      setLikedSongs(fetchedLiked);
 
-        let rawArtists = [];
-        if (artistsRes.status === 'fulfilled') {
-          const aData = artistsRes.value?.data;
-          rawArtists =
-            aData?.artists ||
-            aData?.rows ||
-            aData?.data ||
-            (Array.isArray(aData) ? aData : []);
-        }
+      // 4. PLAYLISTS
+      let fetchedPlaylists = [];
+      const currentUserId = user?.id || user?._id;
+      if (playlistsRes.status === 'fulfilled') {
+        const pData = playlistsRes.value?.data;
+        const list =
+          pData?.playlists ||
+          pData?.rows ||
+          pData?.data ||
+          (Array.isArray(pData) ? pData : []);
 
-        // Filter artists selected as VIP / Premium
-        let finalPremiumArtists = rawArtists.filter((art) => {
-          const idMatch = storedPremiumArtistIds.some(
-            (id) => String(id) === String(art.id || art._id)
-          );
-          return idMatch || art.is_premium || art.is_favorite || art.isPremium;
-        });
+        fetchedPlaylists = Array.isArray(list)
+          ? list.filter((p) => {
+              const owner = p.user_id || p.userId || p.user?._id || p.user;
+              return !owner || !currentUserId || String(owner) === String(currentUserId);
+            })
+          : [];
+      } else if (summaryRes.status === 'fulfilled' && summaryRes.value?.data?.data?.playlists) {
+        fetchedPlaylists = summaryRes.value.data.data.playlists;
+      }
+      setUserPlaylists(fetchedPlaylists);
 
-        // Fallback: If no dedicated /artists API was returned, derive from catalog/likes with storage
-        if (finalPremiumArtists.length === 0 && (storedPremiumArtistIds.length > 0 || catalog.length > 0)) {
-          const artistMap = {};
-          [...catalog, ...fetchedLiked].forEach((s) => {
-            const aName = s.artist || s.artists?.join(', ');
-            if (aName) {
-              const matchedId =
-                s.artist_id || s.artistId || String(aName).toLowerCase().replace(/\s+/g, '-');
-              const isMarkedInStorage =
-                storedPremiumArtistIds.includes(String(matchedId)) ||
-                storedPremiumArtistIds.includes(String(aName));
+      // 5. RECENTLY PLAYED
+      if (summaryRes.status === 'fulfilled' && summaryRes.value?.data?.data?.recentlyPlayed?.length > 0) {
+        setRecentlyPlayed(summaryRes.value.data.data.recentlyPlayed);
+      } else if (catalog.length > 0) {
+        setRecentlyPlayed(catalog.slice(0, 5));
+      }
 
-              if (isMarkedInStorage || s.is_premium || s.isPremium) {
-                if (!artistMap[aName]) {
-                  artistMap[aName] = {
-                    id: matchedId,
-                    name: aName,
-                    image_url:
-                      s.artist_image ||
-                      s.artist_avatar ||
-                      s.thumbnail_url ||
-                      s.thumbnailUrl ||
-                      DEFAULT_COVER,
-                    is_premium: true,
-                  };
-                }
+      // 6. PREMIUM ARTISTS
+      let storedPremiumArtistIds = [];
+      try {
+        const rawStored =
+          localStorage.getItem(ARTIST_STORAGE_KEY) ||
+          localStorage.getItem('premium_artists') ||
+          localStorage.getItem('fackify_premium_artists');
+        storedPremiumArtistIds = rawStored ? JSON.parse(rawStored) : [];
+      } catch {
+        storedPremiumArtistIds = [];
+      }
+
+      let rawArtists = [];
+      if (artistsRes.status === 'fulfilled') {
+        const aData = artistsRes.value?.data;
+        rawArtists =
+          aData?.artists ||
+          aData?.rows ||
+          aData?.data ||
+          (Array.isArray(aData) ? aData : []);
+      } else if (summaryRes.status === 'fulfilled' && summaryRes.value?.data?.data?.favoriteArtists) {
+        rawArtists = summaryRes.value.data.data.favoriteArtists;
+      }
+
+      let finalPremiumArtists = rawArtists.filter((art) => {
+        const idMatch = storedPremiumArtistIds.some(
+          (id) => String(id) === String(art.id || art._id)
+        );
+        return idMatch || art.is_premium || art.is_favorite || art.isPremium;
+      });
+
+      if (finalPremiumArtists.length === 0 && (storedPremiumArtistIds.length > 0 || catalog.length > 0)) {
+        const artistMap = {};
+        [...catalog, ...fetchedLiked].forEach((s) => {
+          const aName = s.artist || s.artists?.join(', ');
+          if (aName) {
+            const matchedId =
+              s.artist_id || s.artistId || String(aName).toLowerCase().replace(/\s+/g, '-');
+            const isMarkedInStorage =
+              storedPremiumArtistIds.includes(String(matchedId)) ||
+              storedPremiumArtistIds.includes(String(aName));
+
+            if (isMarkedInStorage || s.is_premium || s.isPremium) {
+              if (!artistMap[aName]) {
+                artistMap[aName] = {
+                  id: matchedId,
+                  name: aName,
+                  image_url:
+                    s.artist_image ||
+                    s.artist_avatar ||
+                    s.thumbnail_url ||
+                    s.thumbnailUrl ||
+                    DEFAULT_COVER,
+                  is_premium: true,
+                };
               }
             }
-          });
-          finalPremiumArtists = Object.values(artistMap);
-        }
-
-        // Final fallback if user hasn't selected any in storage yet: show top artists from liked songs
-        if (finalPremiumArtists.length === 0 && fetchedLiked.length > 0) {
-          const artistMap = {};
-          fetchedLiked.forEach((s) => {
-            const aName = s.artist || s.artists?.join(', ');
-            if (aName && !artistMap[aName]) {
-              artistMap[aName] = {
-                id: s.artist_id || s.artist || aName,
-                name: aName,
-                image_url: s.thumbnail_url || s.thumbnailUrl || DEFAULT_COVER,
-                is_premium: true,
-              };
-            }
-          });
-          finalPremiumArtists = Object.values(artistMap).slice(0, 6);
-        }
-
-        setPremiumArtists(finalPremiumArtists);
-      } catch (err) {
-        console.warn('Failed to load profile details:', err?.message);
-      } finally {
-        if (isMounted) setDataLoading(false);
+          }
+        });
+        finalPremiumArtists = Object.values(artistMap);
       }
-    };
 
+      if (finalPremiumArtists.length === 0 && fetchedLiked.length > 0) {
+        const artistMap = {};
+        fetchedLiked.forEach((s) => {
+          const aName = s.artist || s.artists?.join(', ');
+          if (aName && !artistMap[aName]) {
+            artistMap[aName] = {
+              id: s.artist_id || s.artist || aName,
+              name: aName,
+              image_url: s.thumbnail_url || s.thumbnailUrl || DEFAULT_COVER,
+              is_premium: true,
+            };
+          }
+        });
+        finalPremiumArtists = Object.values(artistMap).slice(0, 6);
+      }
+
+      setPremiumArtists(finalPremiumArtists);
+    } catch (err) {
+      console.warn('Failed to load profile details:', err?.message);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [user?.id, user?._id]);
+
+  useEffect(() => {
     fetchProfileData();
+  }, [fetchProfileData]);
 
+  // Live counter progression while actively listening on the profile page
+  useEffect(() => {
+    let refreshTimer = null;
+    if (isPlaying) {
+      refreshTimer = setInterval(() => {
+        setListeningSeconds((prev) => prev + 5);
+      }, 5000);
+    }
     return () => {
-      isMounted = false;
+      if (refreshTimer) clearInterval(refreshTimer);
     };
-  }, [user]);
+  }, [isPlaying]);
 
-  // Joined Date
   const joinedDate = useMemo(() => {
     if (!user?.createdAt && !user?.created_at) return 'Member since 2024';
     const date = new Date(user.createdAt || user.created_at);
@@ -343,7 +404,6 @@ export default function Profile() {
     })}`;
   }, [user]);
 
-  // User Initials
   const userInitials = useMemo(() => {
     if (!user?.username) return 'U';
     const parts = user.username.trim().split(' ');
@@ -353,7 +413,6 @@ export default function Profile() {
     return user.username.substring(0, 2).toUpperCase();
   }, [user]);
 
-  // Playback Handlers
   const handlePlaySong = (song, songList = []) => {
     if (!song) return;
     const list = songList.length > 0 ? songList : [song];
@@ -362,11 +421,8 @@ export default function Profile() {
     }
   };
 
-  // Play songs by a specific Premium Artist
   const handlePlayArtist = async (artist) => {
     const artistName = (artist.name || '').trim().toLowerCase();
-    
-    // Find all tracks matching this artist from catalog and liked songs
     const combinedPool = [...allCatalogSongs, ...likedSongs];
     const matchingTracks = combinedPool.filter((s) => {
       const sArtist = (s.artist || s.artists?.join(', ') || '').toLowerCase();
@@ -454,7 +510,6 @@ export default function Profile() {
 
   return (
     <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-white/20 pb-20 overflow-x-hidden">
-      {/* Background Mesh */}
       <div
         className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[140px] pointer-events-none transition-all duration-1000 opacity-25"
         style={{ background: activeGlow.primary }}
@@ -464,7 +519,6 @@ export default function Profile() {
         style={{ background: activeGlow.primary }}
       />
 
-      {/* Header Banner */}
       <div
         className={`relative h-60 sm:h-72 w-full overflow-hidden bg-gradient-to-r ${activeBanner.gradient} border-b border-white/10 transition-all duration-700`}
       >
@@ -472,7 +526,6 @@ export default function Profile() {
       </div>
 
       <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 -mt-24 sm:-mt-32 relative z-10 space-y-8">
-        {/* Main Header Glass Card */}
         <div
           className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl transition-all duration-500"
           style={{
@@ -532,7 +585,6 @@ export default function Profile() {
                   <span className="truncate">{user?.email || 'No email associated'}</span>
                 </p>
 
-                {/* About Bio Section */}
                 <div className="mt-4 rounded-2xl border border-white/5 bg-white/[0.02] p-3.5 sm:p-4">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
@@ -619,7 +671,6 @@ export default function Profile() {
               </div>
             </div>
 
-            {/* Header Actions */}
             <div className="flex sm:flex-col items-center gap-2.5 shrink-0">
               <button
                 type="button"
@@ -659,28 +710,28 @@ export default function Profile() {
             {[
               {
                 label: 'Songs In Catalog',
-                value: dataLoading ? '—' : catalogCount || 128,
+                value: dataLoading && !catalogCount ? '—' : catalogCount,
                 icon: Music2,
                 color: 'text-teal-400',
                 bg: 'bg-teal-500/10',
               },
               {
                 label: 'Liked Songs',
-                value: dataLoading ? '—' : likedSongs.length,
+                value: dataLoading && !likedSongs.length ? '—' : likedSongs.length,
                 icon: Heart,
                 color: 'text-rose-400',
                 bg: 'bg-rose-500/10',
               },
               {
                 label: 'Playlists',
-                value: dataLoading ? '—' : userPlaylists.length,
+                value: dataLoading && !userPlaylists.length ? '—' : userPlaylists.length,
                 icon: ListMusic,
                 color: 'text-cyan-400',
                 bg: 'bg-cyan-500/10',
               },
               {
                 label: 'Listening Time',
-                value: '24h 18m',
+                value: formatListeningTime(listeningSeconds),
                 icon: Clock,
                 color: 'text-amber-400',
                 bg: 'bg-amber-500/10',
@@ -756,11 +807,8 @@ export default function Profile() {
           </div>
         )}
 
-        {/* =====================================================
-            4. 🎧 RECENTLY PLAYED & 5. ❤️ FAVORITES / PREMIUM ARTISTS
-        ====================================================== */}
+        {/* Recently Played & Favorites */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recently Played */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-white mb-4 flex items-center justify-between">
@@ -842,7 +890,6 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Favorites & Premium Artists with Play Buttons */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -851,7 +898,6 @@ export default function Profile() {
                   Your Favorites
                 </h2>
 
-                {/* Sub-tab Switches */}
                 <div className="flex items-center gap-1 rounded-xl bg-slate-950 p-1 border border-white/10">
                   <button
                     type="button"
@@ -879,7 +925,6 @@ export default function Profile() {
                 </div>
               </div>
 
-              {/* Tab 1: Exact Premium Artists */}
               {favTab === 'artists' && (
                 premiumArtists.length === 0 ? (
                   <div className="py-12 text-center text-slate-500 text-xs italic">
@@ -892,7 +937,6 @@ export default function Profile() {
                         key={artist.id || artist._id || idx}
                         className="group relative p-3 rounded-2xl bg-gradient-to-b from-slate-900/90 via-slate-950 to-slate-900 border border-amber-400/30 hover:border-amber-400/60 transition flex flex-col items-center text-center shadow-lg hover:-translate-y-1 hover:shadow-amber-500/10"
                       >
-                        {/* Circular Artist Image */}
                         <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-2.5 border-2 border-amber-400/50 p-0.5 bg-slate-950">
                           <img
                             src={artist.image_url || artist.avatar || artist.imageUrl || DEFAULT_COVER}
@@ -904,7 +948,6 @@ export default function Profile() {
                             }}
                           />
                           
-                          {/* Play Button Overlay */}
                           <div 
                             onClick={() => handlePlayArtist(artist)}
                             className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center cursor-pointer"
@@ -914,13 +957,11 @@ export default function Profile() {
                             </div>
                           </div>
 
-                          {/* VIP Badge */}
                           <div className="absolute bottom-0 right-0 p-1 bg-slate-950 rounded-full border border-amber-400/60 shadow-md">
                             <Crown className="w-3 h-3 text-amber-400" />
                           </div>
                         </div>
 
-                        {/* Artist Name & Play Mix Button */}
                         <h4 className="text-xs font-bold text-slate-100 truncate w-full">
                           {artist.name}
                         </h4>
@@ -942,7 +983,6 @@ export default function Profile() {
                 )
               )}
 
-              {/* Tab 2: Favorite Tracks */}
               {favTab === 'tracks' && (
                 likedSongs.length === 0 ? (
                   <div className="py-12 text-center text-slate-500 text-xs italic">
@@ -988,9 +1028,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* =====================================================
-            6. 📀 YOUR PLAYLISTS
-        ====================================================== */}
+        {/* Playlists */}
         <div className="space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <ListMusic className="w-5 h-5 text-violet-400" />
@@ -1092,7 +1130,7 @@ export default function Profile() {
                 icon: Bell,
                 title: 'Notification Settings',
                 desc: 'Configure email alerts for new playlist releases and track likes.',
-                action: () => alert('Notification settings opened.'),
+                action: () => alert('Notification practical settings opened.'),
               },
               {
                 icon: Palette,
@@ -1143,7 +1181,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Theme Customization Modal */}
       {isCustomizing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">

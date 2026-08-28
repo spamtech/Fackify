@@ -5,6 +5,7 @@ import {
   getUserProfileSummary,
   updateUserProfile,
   changePassword,
+  updateListeningTime,
 } from '../controllers/userController.js';
 
 import {
@@ -20,7 +21,7 @@ const router = express.Router();
 router.use(protect);
 
 // ============================================================
-// PROFILE
+// PROFILE & STATS
 // ============================================================
 
 router.get(
@@ -36,6 +37,12 @@ router.get(
 router.put(
   '/profile',
   updateUserProfile
+);
+
+// Listening time updater
+router.post(
+  '/listening-time',
+  updateListeningTime
 );
 
 // ============================================================

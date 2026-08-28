@@ -143,7 +143,7 @@ export const loginUser = asyncHandler(async (req, res) => {
     UPDATE users
     SET last_login = NOW()
     WHERE id = $1
-    RETURNING id, username, email, role, bio, created_at, last_login
+    RETURNING id, username, email, role, bio, created_at, last_login, COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
     `,
     [user.id]
   );
@@ -262,7 +262,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       UPDATE users
       SET last_login = NOW()
       WHERE id = $1
-      RETURNING id, username, email, role, bio, created_at, last_login
+      RETURNING id, username, email, role, bio, created_at, last_login, COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
       `,
       [existingUser.id]
     );
@@ -332,7 +332,8 @@ export const googleLogin = asyncHandler(async (req, res) => {
         role,
         bio,
         created_at,
-        last_login
+        last_login,
+        COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
       `,
       [
         username,
@@ -397,7 +398,8 @@ export const getMe = asyncHandler(async (req, res) => {
       role,
       bio,
       created_at,
-      last_login
+      last_login,
+      COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
     FROM users
     WHERE id = $1
     `,
@@ -471,7 +473,8 @@ export const updateProfile = asyncHandler(async (req, res) => {
       role,
       bio,
       created_at,
-      last_login
+      last_login,
+      COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
     `,
     [cleanUsername, cleanBio, userId]
   );

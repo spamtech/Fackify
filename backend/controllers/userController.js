@@ -20,6 +20,7 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
       u.role,
       u.created_at,
       u.bio,
+      COALESCE(u.total_listening_seconds, 0)::int AS total_listening_seconds,
       (
         SELECT COUNT(*)
         FROM likes l
@@ -168,7 +169,6 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
     );
     favoriteArtists = topArtistsResult.rows || [];
   } catch {
-    // Fallback if artists/song_artists tables are not used directly
     const fallbackArtistsResult = await query(
       `
       SELECT 
@@ -187,11 +187,11 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
     favoriteArtists = fallbackArtistsResult.rows || [];
   }
 
-  // Calculate actual listening time
-  const totalMinutes = Math.round((user.songs_played_count * 210) / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  const listeningTimeFormatted = `${hours}h ${mins}m`;
+  // Calculate formatted real listening time from exact seconds in DB
+  const totalSeconds = user.total_listening_seconds || 0;
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const listeningTimeFormatted = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
   res.status(200).json({
     success: true,
@@ -203,11 +203,13 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
         role: user.role,
         created_at: user.created_at,
         bio: user.bio || '',
+        total_listening_seconds: totalSeconds,
       },
       stats: {
         totalCatalogSongs: user.total_catalog_songs || 0,
         likedCount: user.liked_songs_count || 0,
         playlistCount: user.playlists_count || 0,
+        totalListeningSeconds: totalSeconds,
         listeningTime: listeningTimeFormatted,
       },
       likedSongs: likedSongsResult.rows || [],
@@ -235,6 +237,7 @@ export const getUserProfile = asyncHandler(async (req, res) => {
       u.role,
       u.created_at,
       u.bio,
+      COALESCE(u.total_listening_seconds, 0)::int AS total_listening_seconds,
       (
         SELECT COUNT(*)
         FROM likes l
@@ -267,6 +270,55 @@ export const getUserProfile = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     profile: result.rows[0],
+    user: result.rows[0],
+  });
+});
+
+// ============================================================
+// UPDATE LISTENING TIME (Syncs played seconds into PostgreSQL DB)
+// POST /api/users/listening-time
+// Private
+// ============================================================
+export const updateListeningTime = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { seconds, songId } = req.body;
+
+  const validSeconds = Math.max(0, parseInt(seconds, 10) || 0);
+
+  if (validSeconds === 0) {
+    return res.status(200).json({ success: true, message: 'No seconds to add' });
+  }
+
+  // 1. Increment total_listening_seconds in users table
+  const updateResult = await query(
+    `
+    UPDATE users
+    SET total_listening_seconds = COALESCE(total_listening_seconds, 0) + $1
+    WHERE id = $2
+    RETURNING id, total_listening_seconds
+    `,
+    [validSeconds, userId]
+  );
+
+  // 2. Optionally record into listening_history if a song is playing
+  if (songId) {
+    try {
+      await query(
+        `
+        INSERT INTO listening_history (user_id, song_id, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT DO NOTHING
+        `,
+        [userId, songId]
+      );
+    } catch {
+      // Ignore if table or conflict constraint differs
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    total_listening_seconds: updateResult.rows[0]?.total_listening_seconds || 0,
   });
 });
 
