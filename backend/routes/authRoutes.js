@@ -7,7 +7,8 @@ import {
   getMe,
   updateActivity,
   googleLogin,
-  updateProfile, // <-- 1. Import the new controller
+  updateProfile,
+  requestPremium, // <-- 1. Import the requestPremium controller
 } from '../controllers/authController.js';
 
 import { protect } from '../middleware/authMiddleware.js';
@@ -52,7 +53,13 @@ router.get('/me', protect, getMe);
  * Update user profile (username & bio)
  * PUT /api/auth/profile
  */
-router.put('/profile', protect, updateProfile); // <-- 2. Register the PUT route
+router.put('/profile', protect, updateProfile);
+
+/**
+ * Request Fackify Premium
+ * POST /api/auth/request-premium
+ */
+router.post('/request-premium', protect, requestPremium); // <-- 2. Register the request route
 
 /**
  * User activity heartbeat

@@ -26,6 +26,8 @@ import {
   LogOut,
   Disc3,
   Flame,
+  ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -134,6 +136,12 @@ export default function Profile() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  // Premium request states
+  const [requestingPremium, setRequestingPremium] = useState(false);
+  const [premiumRequested, setPremiumRequested] = useState(
+    Boolean(user?.premium_requested)
+  );
+
   const [favTab, setFavTab] = useState('artists');
 
   const [likedSongs, setLikedSongs] = useState([]);
@@ -143,6 +151,17 @@ export default function Profile() {
   const [recentlyPlayed, setRecentlyPlayed] = useState([]);
   const [catalogCount, setCatalogCount] = useState(0);
   const [listeningSeconds, setListeningSeconds] = useState(0);
+
+  // Fackify Premium status evaluation
+  const isUserPremium = useMemo(() => {
+    return Boolean(
+      user?.is_premium ||
+      user?.isPremium ||
+      user?.fackify_premium ||
+      user?.fackifyPremium ||
+      user?.role === 'admin'
+    );
+  }, [user]);
 
   const [selectedGlow, setSelectedGlow] = useState(() => {
     return localStorage.getItem('profile_glow') || 'emerald';
@@ -165,6 +184,22 @@ export default function Profile() {
     if (user?.bio !== undefined) {
       setBioText(user.bio || '');
     }
+    if (user?.premium_requested !== undefined) {
+      setPremiumRequested(Boolean(user.premium_requested));
+    }
+  }, [user]);
+
+  // Extract avatar or create dynamic avatar based on email/username
+  const userAvatar = useMemo(() => {
+    if (!user) return null;
+    return (
+      user.avatar_url ||
+      user.avatar ||
+      user.picture ||
+      user.profilePic ||
+      user.profile_pic ||
+      null
+    );
   }, [user]);
 
   const getPlaylistCover = (playlist) => {
@@ -193,7 +228,7 @@ export default function Profile() {
           api.get('/artists').catch(() => api.get('/artists/premium')),
         ]);
 
-      // 1. EXTRACT REAL LISTENING TIME FROM DATABASE
+      // 1. LISTENING TIME
       let dbSeconds = 0;
 
       if (summaryRes.status === 'fulfilled') {
@@ -214,7 +249,7 @@ export default function Profile() {
 
       setListeningSeconds(dbSeconds);
 
-      // 2. EXTRACT TOTAL CATALOG COUNT
+      // 2. TOTAL CATALOG COUNT
       let catalog = [];
       let totalSongsCount = 0;
 
@@ -381,7 +416,7 @@ export default function Profile() {
     fetchProfileData();
   }, [fetchProfileData]);
 
-  // Live counter progression while actively listening on the profile page
+  // Real-time counter progression while actively listening
   useEffect(() => {
     let refreshTimer = null;
     if (isPlaying) {
@@ -480,7 +515,7 @@ export default function Profile() {
     setSaveError('');
 
     try {
-      const response = await api.put('/users/profile', { bio: bioText });
+      const response = await api.put('/auth/profile', { bio: bioText });
       if (response.data?.success || response.status === 200) {
         if (user) user.bio = bioText;
         setIsEditingBio(false);
@@ -496,6 +531,22 @@ export default function Profile() {
     }
   };
 
+  const handleRequestPremium = async () => {
+    try {
+      setRequestingPremium(true);
+      const res = await api.post('/auth/request-premium');
+      if (res.data?.success || res.status === 200) {
+        setPremiumRequested(true);
+        if (user) user.premium_requested = true;
+        alert('Your request for Fackify Premium has been submitted for admin approval!');
+      }
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to submit premium request.');
+    } finally {
+      setRequestingPremium(false);
+    }
+  };
+
   const handleSaveCustomization = (glowId, bannerId) => {
     setSelectedGlow(glowId);
     setSelectedBanner(bannerId);
@@ -503,10 +554,6 @@ export default function Profile() {
     localStorage.setItem('profile_banner', bannerId);
     setIsCustomizing(false);
   };
-
-  const isUserPremium = Boolean(
-    user?.is_premium || user?.isPremium || user?.role === 'admin'
-  );
 
   return (
     <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-white/20 pb-20 overflow-x-hidden">
@@ -526,6 +573,10 @@ export default function Profile() {
       </div>
 
       <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 -mt-24 sm:-mt-32 relative z-10 space-y-8">
+        
+        {/* =====================================================
+            1. USER BANNER & PROFILE CARD
+        ====================================================== */}
         <div
           className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl transition-all duration-500"
           style={{
@@ -534,19 +585,24 @@ export default function Profile() {
         >
           <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left flex-1 min-w-0">
+              
+              {/* Avatar Container */}
               <div className="relative shrink-0 group">
                 <div
                   className={`absolute -inset-1 rounded-full bg-gradient-to-r ${activeGlow.ring} blur-md opacity-80 group-hover:opacity-100 transition duration-500 animate-pulse`}
                 />
                 <div className="relative h-28 w-28 sm:h-36 sm:w-36 rounded-full border-4 border-slate-950 bg-slate-950 p-1 flex items-center justify-center overflow-hidden shadow-2xl">
-                  {user?.avatar || user?.profilePic || user?.picture || user?.profile_pic ? (
+                  {userAvatar ? (
                     <img
-                      src={user.avatar || user.profilePic || user.picture || user.profile_pic}
+                      src={userAvatar}
                       alt={user?.username || 'User'}
+                      referrerPolicy="no-referrer"
                       className="h-full w-full object-cover rounded-full"
                       onError={(e) => {
                         e.currentTarget.onerror = null;
-                        e.currentTarget.src = DEFAULT_COVER;
+                        e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                          user?.username || 'User'
+                        )}&background=1e293b&color=38bdf8&bold=true`;
                       }}
                     />
                   ) : (
@@ -560,19 +616,38 @@ export default function Profile() {
                     </div>
                   )}
                 </div>
+
+                {/* Premium Mini Badge on Avatar */}
+                {isUserPremium && (
+                  <div
+                    className="absolute bottom-1 right-1 p-1.5 rounded-full bg-amber-500 text-slate-950 shadow-lg border-2 border-slate-950"
+                    title="Fackify Premium Active"
+                  >
+                    <Crown className="w-4 h-4 fill-current" />
+                  </div>
+                )}
               </div>
 
+              {/* User Bio and Badges */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-center sm:justify-start gap-3 flex-wrap">
+                <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap">
                   <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white truncate">
                     {user?.username || 'Fackify Listener'}
                   </h1>
+
+                  {/* Dynamic Fackify Premium Active Badge */}
+                  {isUserPremium && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-yellow-500/20 border border-amber-400/40 text-amber-300 text-xs font-black uppercase tracking-wider shadow-sm">
+                      <Crown className="h-3.5 w-3.5 fill-current text-amber-400" />
+                      <span>Fackify Premium Active</span>
+                    </span>
+                  )}
 
                   <span
                     className={`rounded-full border px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 shadow-sm transition-colors duration-500 ${activeGlow.badge}`}
                   >
                     <Sparkles className="h-3 w-3" />
-                    {user?.role === 'admin' ? 'Admin' : 'Member'}
+                    {user?.role === 'admin' ? 'Admin' : isUserPremium ? 'VIP Member' : 'Free Tier'}
                   </span>
                 </div>
 
@@ -760,29 +835,35 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Premium Banner */}
+        {/* =====================================================
+            3. FACKIFY PREMIUM STATUS CARD & REQUEST
+        ====================================================== */}
         {isUserPremium ? (
-          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/40 via-slate-900/80 to-amber-950/30 p-6 sm:p-7 backdrop-blur-2xl shadow-xl">
+          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 p-6 sm:p-7 backdrop-blur-2xl shadow-xl">
             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
               <Crown className="w-40 h-40 text-amber-400" />
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-amber-400" />
-                  <h3 className="text-base font-black uppercase tracking-wider text-amber-300">
-                    FACKIFY PREMIUM
-                  </h3>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Crown className="h-5 w-5 fill-current" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black uppercase tracking-wider text-amber-300">
+                      Fackify Premium Active
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Ad-free high-fidelity streaming • Unlimited track skips • VIP Artist access • Lossless downloads
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-300">
-                  Unlimited music • Premium playlists • Ad-free listening • Exclusive high-bitrate content
-                </p>
               </div>
 
-              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold shrink-0 self-start sm:self-auto">
-                <Check className="w-4 h-4" />
-                <span>ACTIVE</span>
+              <div className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold shrink-0 self-start sm:self-auto shadow-sm">
+                <ShieldCheck className="w-4 h-4" />
+                <span>SUBSCRIPTION VERIFIED</span>
               </div>
             </div>
           </div>
@@ -800,15 +881,32 @@ export default function Profile() {
 
             <button
               type="button"
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 text-xs font-bold uppercase tracking-wider transition shadow-lg hover:shadow-amber-500/20 active:scale-95 cursor-pointer shrink-0"
+              disabled={requestingPremium || premiumRequested}
+              onClick={handleRequestPremium}
+              className={`px-5 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-wider transition shadow-lg shrink-0 flex items-center gap-2 ${
+                premiumRequested
+                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 hover:shadow-amber-500/20 active:scale-95 cursor-pointer'
+              }`}
             >
-              Get Premium
+              {requestingPremium ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : premiumRequested ? (
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Crown className="w-3.5 h-3.5 fill-current" />
+              )}
+              <span>{premiumRequested ? 'Requested (Pending)' : 'Get Premium'}</span>
             </button>
           </div>
         )}
 
-        {/* Recently Played & Favorites */}
+        {/* =====================================================
+            4. RECENTLY PLAYED & FAVORITES
+        ====================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* Recently Played Section */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-white mb-4 flex items-center justify-between">
@@ -890,6 +988,7 @@ export default function Profile() {
             </div>
           </div>
 
+          {/* Favorites (Artists vs Tracks) */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -974,7 +1073,7 @@ export default function Profile() {
                           onClick={() => handlePlayArtist(artist)}
                           className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 text-[11px] font-semibold border border-amber-400/30 transition active:scale-95 cursor-pointer"
                         >
-                          <Play className="w-3 h-3 fill-current" />
+                          <Play className="w-3.5 h-3.5 fill-current" />
                           <span>Play Songs</span>
                         </button>
                       </div>
@@ -1028,7 +1127,9 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Playlists */}
+        {/* =====================================================
+            5. PLAYLISTS
+        ====================================================== */}
         <div className="space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <ListMusic className="w-5 h-5 text-violet-400" />
@@ -1105,7 +1206,9 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Account Settings */}
+        {/* =====================================================
+            6. ACCOUNT SETTINGS
+        ====================================================== */}
         <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-slate-400" />
@@ -1181,6 +1284,9 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* =====================================================
+          7. THEME CUSTOMIZATION MODAL
+      ====================================================== */}
       {isCustomizing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">

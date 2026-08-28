@@ -19,16 +19,11 @@ export const getAdminStats = asyncHandler(async (req, res) => {
     query('SELECT COUNT(*)::int AS count FROM songs'),
     query('SELECT COUNT(*)::int AS count FROM playlists'),
     query('SELECT COUNT(*)::int AS count FROM likes'),
-
-    // Supports artist table if it exists.
-    // If your project does not have an artists table,
-    // change this to SELECT COUNT(DISTINCT artist) FROM songs.
     query('SELECT COUNT(*)::int AS count FROM artists'),
   ]);
 
   res.status(200).json({
     success: true,
-
     stats: {
       totalUsers: usersCount.rows[0]?.count || 0,
       totalSongs: songsCount.rows[0]?.count || 0,
@@ -44,9 +39,6 @@ export const getAdminStats = asyncHandler(async (req, res) => {
 // GET ALL REGISTERED USERS
 // GET /api/admin/users
 // Admin only
-//
-// IMPORTANT:
-// last_active_at is required for online/offline detection.
 // ============================================================
 
 export const getAllUsers = asyncHandler(async (req, res) => {
@@ -57,6 +49,9 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       blocked,
       created_at,
       last_login,
@@ -134,6 +129,9 @@ export const getUserDetails = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       password,
       blocked,
       created_at,
@@ -224,17 +222,17 @@ export const getUserDetails = asyncHandler(async (req, res) => {
       username: user.username,
       email: user.email,
       role: user.role,
+      is_premium: Boolean(user.is_premium),
+      premium_requested: Boolean(user.premium_requested),
+      avatar_url: user.avatar_url,
       blocked: user.blocked,
       created_at: user.created_at,
       last_login: user.last_login,
       last_active_at: user.last_active_at,
-
-      // Kept because your existing AdminDashboard uses it.
       password_hash: user.password,
     },
 
     playlists: playlistsRes.rows,
-
     likedSongs: likedSongsRes.rows,
   });
 });
@@ -257,7 +255,6 @@ export const updateUserRole = asyncHandler(async (req, res) => {
     )
   ) {
     res.status(400);
-
     throw new Error(
       "Invalid role. Role must be 'admin' or 'user'"
     );
@@ -274,6 +271,9 @@ export const updateUserRole = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       blocked,
       created_at,
       last_login,
@@ -298,6 +298,61 @@ export const updateUserRole = asyncHandler(async (req, res) => {
 
 
 // ============================================================
+// UPDATE USER FACKIFY PREMIUM STATUS
+// PUT /api/admin/users/:id/premium
+// Admin only
+// ============================================================
+
+export const updateUserPremiumStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const isPremium = req.body.isPremium ?? req.body.is_premium;
+
+  if (typeof isPremium !== 'boolean') {
+    res.status(400);
+    throw new Error('isPremium must be a boolean value (true/false)');
+  }
+
+  // When approving or toggling premium, clear the pending request flag
+  const result = await query(
+    `
+    UPDATE users
+    SET 
+      is_premium = $1,
+      premium_requested = FALSE
+    WHERE id = $2
+
+    RETURNING
+      id,
+      username,
+      email,
+      role,
+      is_premium,
+      premium_requested,
+      avatar_url,
+      blocked,
+      created_at,
+      last_login,
+      last_active_at
+    `,
+    [isPremium, id]
+  );
+
+  if (result.rowCount === 0) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    message: isPremium
+      ? 'Fackify Premium approved successfully'
+      : 'Fackify Premium revoked successfully',
+    user: result.rows[0],
+  });
+});
+
+
+// ============================================================
 // BLOCK / UNBLOCK USER
 // PUT /api/admin/users/:id/block
 // Admin only
@@ -307,44 +362,26 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { blocked } = req.body;
 
-  // ----------------------------------------------------------
-  // Validate
-  // ----------------------------------------------------------
-
   if (typeof blocked !== 'boolean') {
     res.status(400);
-
     throw new Error(
       'blocked must be a boolean'
     );
   }
 
-
-  // ----------------------------------------------------------
-  // Prevent admin from blocking themselves
-  // ----------------------------------------------------------
-
   if (
     String(id) === String(req.user.id)
   ) {
     res.status(400);
-
     throw new Error(
       'You cannot block your own account'
     );
   }
 
-
-  // ----------------------------------------------------------
-  // Update
-  // ----------------------------------------------------------
-
   const result = await query(
     `
     UPDATE users
-
     SET blocked = $1
-
     WHERE id = $2
 
     RETURNING
@@ -352,6 +389,9 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       blocked,
       created_at,
       last_login,
@@ -363,31 +403,18 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
     ]
   );
 
-
-  // ----------------------------------------------------------
-  // User not found
-  // ----------------------------------------------------------
-
   if (result.rowCount === 0) {
     res.status(404);
-
     throw new Error(
       'User not found'
     );
   }
 
-
-  // ----------------------------------------------------------
-  // Response
-  // ----------------------------------------------------------
-
   res.status(200).json({
     success: true,
-
     message: blocked
       ? 'User blocked successfully'
       : 'User unblocked successfully',
-
     user: result.rows[0],
   });
 });
@@ -402,25 +429,14 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-
-  // ----------------------------------------------------------
-  // 1. Prevent admin from deleting themselves
-  // ----------------------------------------------------------
-
   if (
     String(id) === String(req.user.id)
   ) {
     res.status(400);
-
     throw new Error(
       'You cannot delete your own admin account'
     );
   }
-
-
-  // ----------------------------------------------------------
-  // 2. Find user
-  // ----------------------------------------------------------
 
   const userResult = await query(
     `
@@ -435,46 +451,26 @@ export const deleteUser = asyncHandler(async (req, res) => {
     [id]
   );
 
-
   if (userResult.rowCount === 0) {
     res.status(404);
-
     throw new Error(
       'User not found'
     );
   }
 
-
   const user = userResult.rows[0];
-
-
-  // ----------------------------------------------------------
-  // 3. Prevent deleting another admin
-  // ----------------------------------------------------------
 
   if (user.role === 'admin') {
     res.status(403);
-
     throw new Error(
       'Admin accounts cannot be deleted from this dashboard'
     );
   }
 
-
-  // ----------------------------------------------------------
-  // 4. Start transaction
-  // ----------------------------------------------------------
-
   const client = await pool.connect();
-
 
   try {
     await client.query('BEGIN');
-
-
-    // --------------------------------------------------------
-    // 5. Delete user's likes
-    // --------------------------------------------------------
 
     await client.query(
       `
@@ -483,11 +479,6 @@ export const deleteUser = asyncHandler(async (req, res) => {
       `,
       [id]
     );
-
-
-    // --------------------------------------------------------
-    // 6. Delete playlist songs
-    // --------------------------------------------------------
 
     await client.query(
       `
@@ -501,11 +492,6 @@ export const deleteUser = asyncHandler(async (req, res) => {
       [id]
     );
 
-
-    // --------------------------------------------------------
-    // 7. Delete user's playlists
-    // --------------------------------------------------------
-
     await client.query(
       `
       DELETE FROM playlists
@@ -513,11 +499,6 @@ export const deleteUser = asyncHandler(async (req, res) => {
       `,
       [id]
     );
-
-
-    // --------------------------------------------------------
-    // 8. Delete user
-    // --------------------------------------------------------
 
     const deleteResult = await client.query(
       `
@@ -528,11 +509,13 @@ export const deleteUser = asyncHandler(async (req, res) => {
         id,
         username,
         email,
-        role
+        role,
+        is_premium,
+        premium_requested,
+        avatar_url
       `,
       [id]
     );
-
 
     if (deleteResult.rowCount === 0) {
       throw new Error(
@@ -540,48 +523,23 @@ export const deleteUser = asyncHandler(async (req, res) => {
       );
     }
 
-
-    // --------------------------------------------------------
-    // 9. Commit
-    // --------------------------------------------------------
-
     await client.query('COMMIT');
-
-
-    // --------------------------------------------------------
-    // 10. Success response
-    // --------------------------------------------------------
 
     res.status(200).json({
       success: true,
-
       message:
         `User "${user.username}" and all associated personal data were deleted successfully`,
-
       user: deleteResult.rows[0],
     });
 
   } catch (error) {
-
-    // --------------------------------------------------------
-    // Rollback
-    // --------------------------------------------------------
-
     await client.query('ROLLBACK');
-
     console.error(
       '❌ Delete user transaction failed:',
       error
     );
-
     throw error;
-
   } finally {
-
-    // --------------------------------------------------------
-    // Release connection
-    // --------------------------------------------------------
-
     client.release();
   }
 });

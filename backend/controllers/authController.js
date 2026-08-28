@@ -59,14 +59,14 @@ export const registerUser = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(12);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  // Create user
+  // Create user with default is_premium = FALSE, premium_requested = FALSE
   const newUser = await query(
     `
     INSERT INTO users
-      (username, email, password, role, last_login)
+      (username, email, password, role, is_premium, premium_requested, last_login)
     VALUES
-      ($1, $2, $3, $4, NOW())
-    RETURNING id, username, email, role, created_at, last_login
+      ($1, $2, $3, $4, FALSE, FALSE, NOW())
+    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url, created_at, last_login
     `,
     [
       cleanUsername,
@@ -137,13 +137,24 @@ export const loginUser = asyncHandler(async (req, res) => {
     throw new Error('Invalid email or password');
   }
 
-  // Update last login
+  // Update last login and return is_premium and premium_requested
   const updatedUser = await query(
     `
     UPDATE users
     SET last_login = NOW()
     WHERE id = $1
-    RETURNING id, username, email, role, bio, created_at, last_login, COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
+    RETURNING 
+      id, 
+      username, 
+      email, 
+      role, 
+      is_premium, 
+      premium_requested,
+      avatar_url,
+      bio, 
+      created_at, 
+      last_login, 
+      COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
     `,
     [user.id]
   );
@@ -210,6 +221,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
     email_verified: emailVerified,
     name,
     given_name: givenName,
+    picture,
   } = payload;
 
   // Basic validation
@@ -238,6 +250,9 @@ export const googleLogin = asyncHandler(async (req, res) => {
       email,
       password,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       bio,
       created_at,
       last_login
@@ -260,11 +275,24 @@ export const googleLogin = asyncHandler(async (req, res) => {
     const updatedResult = await query(
       `
       UPDATE users
-      SET last_login = NOW()
+      SET 
+        last_login = NOW(),
+        avatar_url = COALESCE($2, avatar_url)
       WHERE id = $1
-      RETURNING id, username, email, role, bio, created_at, last_login, COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
+      RETURNING 
+        id, 
+        username, 
+        email, 
+        role, 
+        is_premium, 
+        premium_requested,
+        avatar_url,
+        bio, 
+        created_at, 
+        last_login, 
+        COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
       `,
-      [existingUser.id]
+      [existingUser.id, picture || null]
     );
 
     user = updatedResult.rows[0];
@@ -321,15 +349,21 @@ export const googleLogin = asyncHandler(async (req, res) => {
           email,
           password,
           role,
+          is_premium,
+          premium_requested,
+          avatar_url,
           last_login
         )
       VALUES
-        ($1, $2, NULL, 'user', NOW())
+        ($1, $2, NULL, 'user', FALSE, FALSE, $3, NOW())
       RETURNING
         id,
         username,
         email,
         role,
+        is_premium,
+        premium_requested,
+        avatar_url,
         bio,
         created_at,
         last_login,
@@ -338,6 +372,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       [
         username,
         cleanEmail,
+        picture || null,
       ]
     );
 
@@ -396,6 +431,9 @@ export const getMe = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       bio,
       created_at,
       last_login,
@@ -414,6 +452,53 @@ export const getMe = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     user: userResult.rows[0],
+  });
+});
+
+// ============================================================
+// REQUEST FACKIFY PREMIUM
+// POST /api/auth/request-premium
+// ACCESS: Private
+// ============================================================
+
+export const requestPremium = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401);
+    throw new Error('Authentication required');
+  }
+
+  const updateResult = await query(
+    `
+    UPDATE users
+    SET premium_requested = TRUE
+    WHERE id = $1
+    RETURNING
+      id,
+      username,
+      email,
+      role,
+      is_premium,
+      premium_requested,
+      avatar_url,
+      bio,
+      created_at,
+      last_login,
+      COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
+    `,
+    [userId]
+  );
+
+  if (updateResult.rows.length === 0) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Fackify Premium request submitted successfully',
+    user: updateResult.rows[0],
   });
 });
 
@@ -471,6 +556,9 @@ export const updateProfile = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       bio,
       created_at,
       last_login,
@@ -522,6 +610,9 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
       username,
       email,
       role,
+      is_premium,
+      premium_requested,
+      avatar_url,
       blocked,
       created_at,
       last_login
@@ -606,7 +697,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
     `
     DELETE FROM users
     WHERE id = $1
-    RETURNING id, username, email, role
+    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url
     `,
     [id]
   );

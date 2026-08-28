@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   CopyCheck,
+  Crown,
   Edit2,
   Eye,
   ExternalLink,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Sparkles,
   Trash2,
   User,
   Users,
@@ -182,13 +184,14 @@ const AdminDashboard = () => {
 
 
   // ==========================================================
-  // USER INSPECTOR
+  // USER INSPECTOR & PREMIUM STATE
   // ==========================================================
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
   const [loadingUserDetail, setLoadingUserDetail] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [updatingPremiumUserId, setUpdatingPremiumUserId] = useState(null);
 
 
   // ==========================================================
@@ -234,6 +237,30 @@ const AdminDashboard = () => {
       artist.avatar_url ??
       artist.thumbnail_url ??
       defaultArtistImage
+    );
+  };
+
+  const isUserPremium = (user) => {
+    if (!user) return false;
+    return Boolean(
+      user.is_premium ??
+      user.isPremium ??
+      user.fackify_premium ??
+      user.fackifyPremium ??
+      user.fakeify_premium ??
+      user.fakeifyPremium
+    );
+  };
+
+  const getUserAvatar = (user) => {
+    if (!user) return null;
+    return (
+      user.avatar_url ||
+      user.avatar ||
+      user.picture ||
+      user.profilePic ||
+      user.profile_pic ||
+      null
     );
   };
 
@@ -829,7 +856,6 @@ const AdminDashboard = () => {
     setLoadingArtistSongs(true);
 
     try {
-      // Attempt endpoint or fallback to songs filter
       const res = await api.get(`/songs/artist/${artistId}`).catch(() => null);
       let list = [];
 
@@ -881,12 +907,10 @@ const AdminDashboard = () => {
       setDeletingModalSongId(songId);
       await api.delete(`/songs/${songId}`);
 
-      // Instantly update modal state
       setArtistSongsList((prev) =>
         prev.filter((s) => (s.id || s._id) !== songId)
       );
 
-      // Refresh global dashboard data
       await fetchAdminData(false);
     } catch (err) {
       console.error('Delete duplicate song error:', err);
@@ -1008,6 +1032,72 @@ const AdminDashboard = () => {
       setShowUserModal(false);
     } finally {
       setLoadingUserDetail(false);
+    }
+  };
+
+
+  // ==========================================================
+  // FACKIFY PREMIUM APPROVAL / TOGGLE
+  // ==========================================================
+
+  const handleTogglePremium = async (user) => {
+    if (!user?.id) return;
+
+    const currentStatus = isUserPremium(user);
+    const targetStatus = !currentStatus;
+    const actionText = targetStatus ? 'Grant Fackify Premium to' : 'Revoke Fackify Premium from';
+
+    const confirmed = window.confirm(
+      `${actionText} "${user.username || 'this user'}"?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setUpdatingPremiumUserId(user.id);
+
+      await api.put(`/admin/users/${user.id}/premium`, {
+        isPremium: targetStatus,
+        is_premium: targetStatus,
+      }).catch(async () => {
+        await api.put(`/admin/users/${user.id}`, {
+          is_premium: targetStatus,
+        });
+      });
+
+      // Optimistically update local users state and clear pending request
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.id === user.id
+            ? {
+                ...u,
+                is_premium: targetStatus,
+                isPremium: targetStatus,
+                premium_requested: false,
+              }
+            : u
+        )
+      );
+
+      // Update inspector detail if currently open
+      setSelectedUserDetail((prev) => {
+        if (!prev?.user || prev.user.id !== user.id) return prev;
+        return {
+          ...prev,
+          user: {
+            ...prev.user,
+            is_premium: targetStatus,
+            isPremium: targetStatus,
+            premium_requested: false,
+          },
+        };
+      });
+
+      await fetchAdminData(false);
+    } catch (err) {
+      console.error('Failed to update premium status:', err);
+      alert(err?.response?.data?.message || 'Failed to update premium subscription status.');
+    } finally {
+      setUpdatingPremiumUserId(null);
     }
   };
 
@@ -1176,7 +1266,7 @@ const AdminDashboard = () => {
                 </h1>
 
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Manage songs, artists, users, likes and playlists.
+                  Manage songs, artists, users, subscriptions, likes and playlists.
                 </p>
               </div>
 
@@ -1869,13 +1959,13 @@ const AdminDashboard = () => {
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-amber-400" />
+                      <Crown className="w-4 h-4 text-emerald-400" />
                       <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
-                        Admins
+                        Premium
                       </span>
                     </div>
-                    <p className="text-xl font-black text-amber-400 mt-2">
-                      {users.filter((user) => user.role === 'admin').length}
+                    <p className="text-xl font-black text-emerald-400 mt-2">
+                      {users.filter((user) => isUserPremium(user)).length}
                     </p>
                   </div>
 
@@ -1887,11 +1977,11 @@ const AdminDashboard = () => {
                   <div className="p-4 border-b border-slate-800">
 
                     <h2 className="text-base font-bold text-slate-100">
-                      User Activity
+                      User Activity & Membership
                     </h2>
 
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Live online/offline status and account management.
+                      Live online/offline status, account roles, and Fackify Premium approvals.
                     </p>
 
                   </div>
@@ -1917,6 +2007,11 @@ const AdminDashboard = () => {
                         const online = getUserOnlineStatus(user);
                         const lastSeen = getUserLastSeen(user);
                         const deleting = deletingUserId === user.id;
+                        const premium = isUserPremium(user);
+                        const isRequested = Boolean(user.premium_requested);
+                        const updatingPremium = updatingPremiumUserId === user.id;
+                        const isAdmin = user.role === 'admin';
+                        const avatar = getUserAvatar(user);
 
                         return (
                           <div
@@ -1928,10 +2023,26 @@ const AdminDashboard = () => {
 
                               <div className="flex items-center gap-3 min-w-0 flex-1">
 
+                                {/* USER AVATAR WITH GOOGLE PICTURE SUPPORT */}
                                 <div className="relative shrink-0">
 
-                                  <div className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center">
-                                    <User className="w-5 h-5 text-slate-400" />
+                                  <div className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center">
+                                    {avatar ? (
+                                      <img
+                                        src={avatar}
+                                        alt={user.username || 'User'}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          e.currentTarget.onerror = null;
+                                          e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                            user.username || 'User'
+                                          )}&background=1e293b&color=38bdf8&bold=true`;
+                                        }}
+                                      />
+                                    ) : (
+                                      <User className="w-5 h-5 text-slate-400" />
+                                    )}
                                   </div>
 
                                   <span
@@ -1945,11 +2056,27 @@ const AdminDashboard = () => {
 
                                 <div className="min-w-0">
 
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
 
                                     <p className="text-sm font-bold text-slate-100 truncate">
                                       @{user.username || 'Unknown'}
                                     </p>
+
+                                    {/* PENDING APPROVAL REQUEST BADGE (NON-ADMINS ONLY) */}
+                                    {!isAdmin && isRequested && !premium && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                                        <Clock className="w-2.5 h-2.5" />
+                                        Request Pending
+                                      </span>
+                                    )}
+
+                                    {/* PREMIUM ACTIVE BADGE */}
+                                    {premium && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                                        <Sparkles className="w-2.5 h-2.5" />
+                                        Fackify Premium
+                                      </span>
+                                    )}
 
                                     {/* STATUS BADGE */}
                                     <div
@@ -2001,13 +2128,56 @@ const AdminDashboard = () => {
 
                                 <span
                                   className={`px-2.5 py-1.5 rounded-lg border text-[9px] font-bold ${
-                                    user.role === 'admin'
+                                    isAdmin
                                       ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                       : 'bg-sky-500/10 text-sky-400 border-sky-500/20'
                                   }`}
                                 >
                                   {user.role || 'user'}
                                 </span>
+
+
+                                {/* FACKIFY PREMIUM APPROVE / REVOKE BUTTON (ONLY FOR REGULAR USERS) */}
+                                {!isAdmin && (
+                                  <button
+                                    type="button"
+                                    disabled={updatingPremium}
+                                    onClick={() => handleTogglePremium(user)}
+                                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50 ${
+                                      premium
+                                        ? 'bg-emerald-500/15 hover:bg-rose-500/20 border border-emerald-500/30 hover:border-rose-500/40 text-emerald-300 hover:text-rose-300'
+                                        : isRequested
+                                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg ring-2 ring-amber-400/50 animate-pulse'
+                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                                    }`}
+                                    title={
+                                      premium
+                                        ? 'Revoke Fackify Premium'
+                                        : isRequested
+                                        ? 'Approve Pending Fackify Premium Request'
+                                        : 'Grant Fackify Premium'
+                                    }
+                                  >
+                                    {updatingPremium ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : premium ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : isRequested ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
+                                    ) : (
+                                      <Sparkles className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>
+                                      {updatingPremium
+                                        ? 'Updating...'
+                                        : premium
+                                        ? 'Premium Active'
+                                        : isRequested
+                                        ? 'Approve Request'
+                                        : 'Approve Fackify Premium'}
+                                    </span>
+                                  </button>
+                                )}
 
 
                                 <button
@@ -2536,9 +2706,9 @@ const AdminDashboard = () => {
                               title="Delete this track"
                             >
                               {isDeleting ? (
-                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               ) : (
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               )}
                               Delete
                             </button>
@@ -2621,8 +2791,41 @@ const AdminDashboard = () => {
 
                 <div className="space-y-6 text-xs">
 
-                  {/* PROFILE */}
+                  {/* PROFILE HEADER IN INSPECTOR */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
+                      {getUserAvatar(selectedUserDetail.user) ? (
+                        <img
+                          src={getUserAvatar(selectedUserDetail.user)}
+                          alt={selectedUserDetail.user?.username || 'User'}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              selectedUserDetail.user?.username || 'User'
+                            )}&background=1e293b&color=38bdf8&bold=true`;
+                          }}
+                        />
+                      ) : (
+                        <User className="w-8 h-8 text-slate-400" />
+                      )}
+                    </div>
 
+                    <div className="min-w-0">
+                      <h4 className="text-base font-bold text-white truncate">
+                        {selectedUserDetail.user?.username}
+                      </h4>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">
+                        {selectedUserDetail.user?.email}
+                      </p>
+                      <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-bold text-slate-300 uppercase">
+                        {selectedUserDetail.user?.role || 'user'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* PROFILE DETAILS */}
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                     <div className="space-y-3">
@@ -2655,6 +2858,30 @@ const AdminDashboard = () => {
                         </span>
 
                       </div>
+
+
+                      <div className="flex items-center gap-2 text-slate-300">
+
+                        <Crown className="w-4 h-4 text-emerald-400" />
+
+                        <span className="font-semibold">
+                          Membership:
+                        </span>
+
+                        <span className={`font-bold ${isUserPremium(selectedUserDetail.user) ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {isUserPremium(selectedUserDetail.user) ? 'Fackify Premium' : 'Free Tier'}
+                        </span>
+
+                      </div>
+
+
+                      {/* PREMIUM REQUEST STATUS IN INSPECTOR */}
+                      {Boolean(selectedUserDetail.user?.premium_requested) && !isUserPremium(selectedUserDetail.user) && (
+                        <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                          <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                          <span>Fackify Premium Request Pending</span>
+                        </div>
+                      )}
 
 
                       <div className="flex items-center gap-2 text-slate-300">
@@ -3537,7 +3764,7 @@ const AdminDashboard = () => {
                         }}
                       />
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
 
                         <p className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
                           Preview

@@ -5,6 +5,7 @@ import {
   getAllUsers,
   getUserDetails,
   updateUserRole,
+  updateUserPremiumStatus,
   getAllLikesActivity,
   updateUserBlockStatus,
   deleteUser,
@@ -37,6 +38,12 @@ router.get(
 router.put(
   '/users/:id/role',
   updateUserRole
+);
+
+// Fakeify Premium Approval / Revocation
+router.put(
+  '/users/:id/premium',
+  updateUserPremiumStatus
 );
 
 
