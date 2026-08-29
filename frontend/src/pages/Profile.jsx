@@ -220,9 +220,6 @@ export default function Profile() {
     return DEFAULT_COVER;
   };
 
-  // ============================================================
-  // COVER PHOTO UPLOAD HANDLERS
-  // ============================================================
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -244,11 +241,9 @@ export default function Profile() {
       const formData = new FormData();
       formData.append('cover', file);
 
-      // Sends upload to profile cover API route
       const res = await api.post('/users/profile/cover', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       }).catch(async () => {
-        // Fallback endpoint if specific cover route isn't set up
         return await api.put('/auth/profile', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
@@ -635,7 +630,8 @@ export default function Profile() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-white/20 pb-20 overflow-x-hidden">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-white/20 pb-20 overflow-x-hidden pt-6 sm:pt-8">
+      {/* Background ambient lighting */}
       <div
         className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full blur-[140px] pointer-events-none transition-all duration-1000 opacity-25"
         style={{ background: activeGlow.primary }}
@@ -645,50 +641,51 @@ export default function Profile() {
         style={{ background: activeGlow.primary }}
       />
 
-      {/* ============================================================
-          TOP COVER BANNER WITH CUSTOM PHOTO & LAPTOP UPLOAD
-      ============================================================ */}
-      <div
-        className={`group relative h-64 sm:h-80 w-full overflow-hidden border-b border-white/10 transition-all duration-700 ${
-          !coverPhoto ? `bg-gradient-to-r ${activeBanner.gradient}` : 'bg-slate-900'
-        }`}
-      >
-        {coverPhoto ? (
-          <img
-            src={coverPhoto}
-            alt="Profile Cover"
-            className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
-            onError={() => setCoverPhoto('')}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
-        )}
-
-        {/* Premium ambient texture + vignette */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(255,255,255,0.08),_transparent_55%)] pointer-events-none" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent pointer-events-none" />
-        <div
-          className="absolute inset-x-0 bottom-0 h-28 opacity-40 pointer-events-none transition-colors duration-700"
-          style={{ background: `linear-gradient(to top, ${activeGlow.glow}, transparent)` }}
-        />
-
-        {/* Change Cover Photo Floating Action Button */}
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-20">
-          <button
-            type="button"
-            onClick={() => setShowCoverModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950/70 hover:bg-slate-950/90 text-xs font-semibold text-white border border-white/15 backdrop-blur-xl transition-all shadow-2xl hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            <Camera className="w-4 h-4" style={{ color: activeGlow.primary }} />
-            <span className="hidden sm:inline">Change Cover</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 -mt-24 sm:-mt-32 relative z-10 space-y-8">
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 relative z-10 space-y-6">
         
         {/* =====================================================
-            1. USER BANNER & PROFILE CARD
+            CARD 1: DEDICATED COVER PHOTO CARD (ABOVE PROFILE CARD)
+        ====================================================== */}
+        <div
+          className="relative h-60 sm:h-80 w-full overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl transition-all duration-500 group"
+          style={{
+            boxShadow: `0 25px 60px -20px ${activeGlow.glow}`,
+          }}
+        >
+          {coverPhoto ? (
+            <img
+              src={coverPhoto}
+              alt="Cover"
+              className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
+              onError={() => setCoverPhoto('')}
+            />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-r ${activeBanner.gradient} flex items-center justify-center`}>
+              <div className="text-center text-slate-500">
+                <Camera className="w-10 h-10 mx-auto opacity-30 mb-1" />
+                <span className="text-xs uppercase tracking-wider font-semibold">No Cover Photo Set</span>
+              </div>
+            </div>
+          )}
+
+          {/* Vignette and bottom gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
+
+          {/* Change Cover Photo Button */}
+          <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-20">
+            <button
+              type="button"
+              onClick={() => setShowCoverModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-950/80 hover:bg-slate-950 text-xs font-semibold text-white border border-white/15 backdrop-blur-md transition-all shadow-xl hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <Camera className="w-4 h-4" style={{ color: activeGlow.primary }} />
+              <span>Change Cover</span>
+            </button>
+          </div>
+        </div>
+
+        {/* =====================================================
+            CARD 2: PROFILE CARD (LOCATED UNDER COVER CARD)
         ====================================================== */}
         <div
           className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-900/70 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl transition-all duration-500"
@@ -696,7 +693,7 @@ export default function Profile() {
             boxShadow: `0 25px 70px -20px ${activeGlow.glow}, 0 0 0 1px rgba(255,255,255,0.03) inset`,
           }}
         >
-          {/* Premium ambient glow accents */}
+          {/* Ambient glow accents */}
           <div
             className="absolute -top-24 -right-24 h-56 w-56 rounded-full blur-3xl opacity-20 pointer-events-none transition-all duration-700"
             style={{ background: activeGlow.primary }}
@@ -895,7 +892,7 @@ export default function Profile() {
         </div>
 
         {/* =====================================================
-            2. 📊 YOUR MUSIC STATS
+            3. YOUR MUSIC STATS
         ====================================================== */}
         <div>
           <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-slate-400 mb-3.5 flex items-center gap-2">
@@ -959,7 +956,7 @@ export default function Profile() {
         </div>
 
         {/* =====================================================
-            3. FACKIFY PREMIUM STATUS CARD & REQUEST
+            4. FACKIFY PREMIUM STATUS CARD & REQUEST
         ====================================================== */}
         {isUserPremium ? (
           <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 p-6 sm:p-7 backdrop-blur-2xl shadow-[0_20px_60px_-20px_rgba(245,158,11,0.35)]">
@@ -1027,7 +1024,7 @@ export default function Profile() {
         )}
 
         {/* =====================================================
-            4. RECENTLY PLAYED & FAVORITES
+            5. RECENTLY PLAYED & FAVORITES
         ====================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
@@ -1250,7 +1247,7 @@ export default function Profile() {
         </div>
 
         {/* =====================================================
-            5. PLAYLISTS
+            6. PLAYLISTS
         ====================================================== */}
         <div className="space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -1329,7 +1326,7 @@ export default function Profile() {
         </div>
 
         {/* =====================================================
-            6. ACCOUNT SETTINGS
+            7. ACCOUNT SETTINGS
         ====================================================== */}
         <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-6 sm:p-8 shadow-xl space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
