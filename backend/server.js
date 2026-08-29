@@ -122,3 +122,4 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Frontend    : ${FRONTEND_URL}`);
   console.log('==========================================');
 });
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

@@ -6,11 +6,11 @@ import {
   updateUserProfile,
   changePassword,
   updateListeningTime,
+  uploadUserCover,
 } from '../controllers/userController.js';
 
-import {
-  protect,
-} from '../middleware/authMiddleware.js';
+import { protect } from '../middleware/authMiddleware.js';
+import { uploadCover } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -37,6 +37,13 @@ router.get(
 router.put(
   '/profile',
   updateUserProfile
+);
+
+// Laptop Cover photo upload route
+router.post(
+  '/profile/cover',
+  uploadCover.single('cover'),
+  uploadUserCover
 );
 
 // Listening time updater

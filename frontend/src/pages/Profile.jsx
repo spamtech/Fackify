@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   User,
   Mail,
@@ -28,6 +28,10 @@ import {
   Flame,
   ShieldCheck,
   RefreshCw,
+  Camera,
+  Link as LinkIcon,
+  UploadCloud,
+  Trash2,
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -112,12 +116,8 @@ const formatListeningTime = (totalSeconds = 0) => {
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
 
-  if (hrs > 0) {
-    return `${hrs}h ${mins}m`;
-  }
-  if (mins > 0) {
-    return `${mins}m ${secs > 0 ? `${secs}s` : ''}`.trim();
-  }
+  if (hrs > 0) return `${hrs}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs > 0 ? `${secs}s` : ''}`.trim();
   return `${secs}s`;
 };
 
@@ -128,6 +128,15 @@ export default function Profile() {
 
   const { playSong, currentSong, isPlaying } = usePlayer();
 
+  const fileInputRef = useRef(null);
+  const [showCoverModal, setShowCoverModal] = useState(false);
+  const [coverUrlInput, setCoverUrlInput] = useState('');
+  const [coverLoading, setCoverLoading] = useState(false);
+  const [coverError, setCoverError] = useState('');
+  const [coverPhoto, setCoverPhoto] = useState(
+    user?.cover_url || user?.coverUrl || user?.cover_photo || ''
+  );
+
   const [copied, setCopied] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -136,14 +145,12 @@ export default function Profile() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  // Premium request states
   const [requestingPremium, setRequestingPremium] = useState(false);
   const [premiumRequested, setPremiumRequested] = useState(
     Boolean(user?.premium_requested)
   );
 
   const [favTab, setFavTab] = useState('artists');
-
   const [likedSongs, setLikedSongs] = useState([]);
   const [allCatalogSongs, setAllCatalogSongs] = useState([]);
   const [premiumArtists, setPremiumArtists] = useState([]);
@@ -152,7 +159,6 @@ export default function Profile() {
   const [catalogCount, setCatalogCount] = useState(0);
   const [listeningSeconds, setListeningSeconds] = useState(0);
 
-  // Fackify Premium status evaluation
   const isUserPremium = useMemo(() => {
     return Boolean(
       user?.is_premium ||
@@ -187,9 +193,12 @@ export default function Profile() {
     if (user?.premium_requested !== undefined) {
       setPremiumRequested(Boolean(user.premium_requested));
     }
+    const customCover = user?.cover_url || user?.coverUrl || user?.cover_photo;
+    if (customCover) {
+      setCoverPhoto(customCover);
+    }
   }, [user]);
 
-  // Extract avatar or create dynamic avatar based on email/username
   const userAvatar = useMemo(() => {
     if (!user) return null;
     return (
@@ -212,8 +221,99 @@ export default function Profile() {
   };
 
   // ============================================================
-  // LOAD LIVE PROFILE DATA FROM BACKEND
+  // COVER PHOTO UPLOAD HANDLERS
   // ============================================================
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setCoverError('Please select a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setCoverError('Image size exceeds 5MB limit.');
+      return;
+    }
+
+    try {
+      setCoverLoading(true);
+      setCoverError('');
+
+      const formData = new FormData();
+      formData.append('cover', file);
+
+      // Sends upload to profile cover API route
+      const res = await api.post('/users/profile/cover', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).catch(async () => {
+        // Fallback endpoint if specific cover route isn't set up
+        return await api.put('/auth/profile', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      });
+
+      const newCover =
+        res.data?.cover_url ||
+        res.data?.coverUrl ||
+        res.data?.user?.cover_url ||
+        URL.createObjectURL(file);
+
+      setCoverPhoto(newCover);
+      if (user) user.cover_url = newCover;
+      setShowCoverModal(false);
+    } catch (err) {
+      setCoverError(
+        err?.response?.data?.message || 'Failed to upload photo from device.'
+      );
+    } finally {
+      setCoverLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUrlCoverSave = async (e) => {
+    e.preventDefault();
+    if (!coverUrlInput.trim()) return;
+
+    try {
+      setCoverLoading(true);
+      setCoverError('');
+
+      const res = await api.put('/auth/profile', { cover_url: coverUrlInput.trim() })
+        .catch(() => api.put('/users/profile', { cover_url: coverUrlInput.trim() }));
+
+      const savedUrl = res.data?.user?.cover_url || coverUrlInput.trim();
+      setCoverPhoto(savedUrl);
+      if (user) user.cover_url = savedUrl;
+      setCoverUrlInput('');
+      setShowCoverModal(false);
+    } catch (err) {
+      setCoverError(
+        err?.response?.data?.message || 'Failed to save cover URL to database.'
+      );
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
+  const handleRemoveCover = async () => {
+    try {
+      setCoverLoading(true);
+      await api.put('/auth/profile', { cover_url: '' })
+        .catch(() => api.put('/users/profile', { cover_url: '' }));
+
+      setCoverPhoto('');
+      if (user) user.cover_url = '';
+      setShowCoverModal(false);
+    } catch (err) {
+      setCoverError('Failed to remove cover photo.');
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
   const fetchProfileData = useCallback(async () => {
     try {
       setDataLoading(true);
@@ -228,9 +328,7 @@ export default function Profile() {
           api.get('/artists').catch(() => api.get('/artists/premium')),
         ]);
 
-      // 1. LISTENING TIME
       let dbSeconds = 0;
-
       if (summaryRes.status === 'fulfilled') {
         const sData = summaryRes.value?.data?.data || summaryRes.value?.data;
         if (sData?.stats?.totalListeningSeconds !== undefined) {
@@ -245,11 +343,13 @@ export default function Profile() {
         if (pData?.total_listening_seconds !== undefined) {
           dbSeconds = Number(pData.total_listening_seconds);
         }
+        if (pData?.cover_url) {
+          setCoverPhoto(pData.cover_url);
+        }
       }
 
       setListeningSeconds(dbSeconds);
 
-      // 2. TOTAL CATALOG COUNT
       let catalog = [];
       let totalSongsCount = 0;
 
@@ -281,7 +381,6 @@ export default function Profile() {
         }
       }
 
-      // 3. LIKED SONGS
       let fetchedLiked = [];
       if (likesRes.status === 'fulfilled') {
         const lData = likesRes.value?.data;
@@ -297,7 +396,6 @@ export default function Profile() {
       }
       setLikedSongs(fetchedLiked);
 
-      // 4. PLAYLISTS
       let fetchedPlaylists = [];
       const currentUserId = user?.id || user?._id;
       if (playlistsRes.status === 'fulfilled') {
@@ -319,14 +417,12 @@ export default function Profile() {
       }
       setUserPlaylists(fetchedPlaylists);
 
-      // 5. RECENTLY PLAYED
       if (summaryRes.status === 'fulfilled' && summaryRes.value?.data?.data?.recentlyPlayed?.length > 0) {
         setRecentlyPlayed(summaryRes.value.data.data.recentlyPlayed);
       } else if (catalog.length > 0) {
         setRecentlyPlayed(catalog.slice(0, 5));
       }
 
-      // 6. PREMIUM ARTISTS
       let storedPremiumArtistIds = [];
       try {
         const rawStored =
@@ -388,22 +484,6 @@ export default function Profile() {
         finalPremiumArtists = Object.values(artistMap);
       }
 
-      if (finalPremiumArtists.length === 0 && fetchedLiked.length > 0) {
-        const artistMap = {};
-        fetchedLiked.forEach((s) => {
-          const aName = s.artist || s.artists?.join(', ');
-          if (aName && !artistMap[aName]) {
-            artistMap[aName] = {
-              id: s.artist_id || s.artist || aName,
-              name: aName,
-              image_url: s.thumbnail_url || s.thumbnailUrl || DEFAULT_COVER,
-              is_premium: true,
-            };
-          }
-        });
-        finalPremiumArtists = Object.values(artistMap).slice(0, 6);
-      }
-
       setPremiumArtists(finalPremiumArtists);
     } catch (err) {
       console.warn('Failed to load profile details:', err?.message);
@@ -416,7 +496,6 @@ export default function Profile() {
     fetchProfileData();
   }, [fetchProfileData]);
 
-  // Real-time counter progression while actively listening
   useEffect(() => {
     let refreshTimer = null;
     if (isPlaying) {
@@ -566,10 +645,44 @@ export default function Profile() {
         style={{ background: activeGlow.primary }}
       />
 
+      {/* ============================================================
+          TOP COVER BANNER WITH CUSTOM PHOTO & LAPTOP UPLOAD
+      ============================================================ */}
       <div
-        className={`relative h-60 sm:h-72 w-full overflow-hidden bg-gradient-to-r ${activeBanner.gradient} border-b border-white/10 transition-all duration-700`}
+        className={`group relative h-64 sm:h-80 w-full overflow-hidden border-b border-white/10 transition-all duration-700 ${
+          !coverPhoto ? `bg-gradient-to-r ${activeBanner.gradient}` : 'bg-slate-900'
+        }`}
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
+        {coverPhoto ? (
+          <img
+            src={coverPhoto}
+            alt="Profile Cover"
+            className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
+            onError={() => setCoverPhoto('')}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
+        )}
+
+        {/* Premium ambient texture + vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(255,255,255,0.08),_transparent_55%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent pointer-events-none" />
+        <div
+          className="absolute inset-x-0 bottom-0 h-28 opacity-40 pointer-events-none transition-colors duration-700"
+          style={{ background: `linear-gradient(to top, ${activeGlow.glow}, transparent)` }}
+        />
+
+        {/* Change Cover Photo Floating Action Button */}
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-20">
+          <button
+            type="button"
+            onClick={() => setShowCoverModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950/70 hover:bg-slate-950/90 text-xs font-semibold text-white border border-white/15 backdrop-blur-xl transition-all shadow-2xl hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Camera className="w-4 h-4" style={{ color: activeGlow.primary }} />
+            <span className="hidden sm:inline">Change Cover</span>
+          </button>
+        </div>
       </div>
 
       <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 -mt-24 sm:-mt-32 relative z-10 space-y-8">
@@ -578,20 +691,30 @@ export default function Profile() {
             1. USER BANNER & PROFILE CARD
         ====================================================== */}
         <div
-          className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl transition-all duration-500"
+          className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-900/90 to-slate-900/70 p-6 sm:p-8 backdrop-blur-2xl shadow-2xl transition-all duration-500"
           style={{
-            boxShadow: `0 20px 60px -15px ${activeGlow.glow}`,
+            boxShadow: `0 25px 70px -20px ${activeGlow.glow}, 0 0 0 1px rgba(255,255,255,0.03) inset`,
           }}
         >
-          <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
+          {/* Premium ambient glow accents */}
+          <div
+            className="absolute -top-24 -right-24 h-56 w-56 rounded-full blur-3xl opacity-20 pointer-events-none transition-all duration-700"
+            style={{ background: activeGlow.primary }}
+          />
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+
+          <div className="relative flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left flex-1 min-w-0">
               
               {/* Avatar Container */}
               <div className="relative shrink-0 group">
                 <div
-                  className={`absolute -inset-1 rounded-full bg-gradient-to-r ${activeGlow.ring} blur-md opacity-80 group-hover:opacity-100 transition duration-500 animate-pulse`}
+                  className={`absolute -inset-1.5 rounded-full bg-gradient-to-r ${activeGlow.ring} blur-lg opacity-70 group-hover:opacity-100 transition duration-500 animate-pulse`}
                 />
-                <div className="relative h-28 w-28 sm:h-36 sm:w-36 rounded-full border-4 border-slate-950 bg-slate-950 p-1 flex items-center justify-center overflow-hidden shadow-2xl">
+                <div
+                  className={`absolute -inset-0.5 rounded-full bg-gradient-to-r ${activeGlow.ring} opacity-90`}
+                />
+                <div className="relative h-28 w-28 sm:h-36 sm:w-36 rounded-full border-[3px] border-slate-950 bg-slate-950 p-1 flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/10">
                   {userAvatar ? (
                     <img
                       src={userAvatar}
@@ -620,7 +743,7 @@ export default function Profile() {
                 {/* Premium Mini Badge on Avatar */}
                 {isUserPremium && (
                   <div
-                    className="absolute bottom-1 right-1 p-1.5 rounded-full bg-amber-500 text-slate-950 shadow-lg border-2 border-slate-950"
+                    className="absolute bottom-1 right-1 p-1.5 rounded-full bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 text-slate-950 shadow-lg shadow-amber-500/40 border-2 border-slate-950 ring-1 ring-amber-200/50"
                     title="Fackify Premium Active"
                   >
                     <Crown className="w-4 h-4 fill-current" />
@@ -631,36 +754,35 @@ export default function Profile() {
               {/* User Bio and Badges */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap">
-                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white truncate">
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white truncate drop-shadow-sm">
                     {user?.username || 'Fackify Listener'}
                   </h1>
 
-                  {/* Dynamic Fackify Premium Active Badge */}
                   {isUserPremium && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-yellow-500/20 border border-amber-400/40 text-amber-300 text-xs font-black uppercase tracking-wider shadow-sm">
-                      <Crown className="h-3.5 w-3.5 fill-current text-amber-400" />
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/25 via-amber-400/30 to-yellow-500/25 border border-amber-400/50 text-amber-200 text-xs font-black uppercase tracking-wider shadow-[0_0_20px_-4px_rgba(245,158,11,0.5)]">
+                      <Crown className="h-3.5 w-3.5 fill-current text-amber-300" />
                       <span>Fackify Premium Active</span>
                     </span>
                   )}
 
                   <span
-                    className={`rounded-full border px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 shadow-sm transition-colors duration-500 ${activeGlow.badge}`}
+                    className={`rounded-full border px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 shadow-sm backdrop-blur-sm transition-colors duration-500 ${activeGlow.badge}`}
                   >
                     <Sparkles className="h-3 w-3" />
                     {user?.role === 'admin' ? 'Admin' : isUserPremium ? 'VIP Member' : 'Free Tier'}
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                <p className="text-xs text-slate-500 font-mono mt-1 tracking-wide">
                   @{user?.username?.toLowerCase().replace(/\s+/g, '') || 'listener'}
                 </p>
 
-                <p className="text-xs sm:text-sm text-slate-400 mt-1 flex items-center justify-center sm:justify-start gap-2">
+                <p className="text-xs sm:text-sm text-slate-400 mt-1.5 flex items-center justify-center sm:justify-start gap-2">
                   <Mail className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                   <span className="truncate">{user?.email || 'No email associated'}</span>
                 </p>
 
-                <div className="mt-4 rounded-2xl border border-white/5 bg-white/[0.02] p-3.5 sm:p-4">
+                <div className="mt-4 rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.035] to-white/[0.015] p-3.5 sm:p-4 shadow-inner shadow-black/20">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
                       About Me
@@ -739,18 +861,18 @@ export default function Profile() {
                   )}
                 </div>
 
-                <div className="mt-3 flex items-center justify-center sm:justify-start gap-2 text-xs text-slate-500 font-mono">
+                <div className="mt-3.5 flex items-center justify-center sm:justify-start gap-2 text-xs text-slate-500 font-mono tracking-wide">
                   <Calendar className="h-3.5 w-3.5 text-slate-600" />
                   <span>{joinedDate}</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex sm:flex-col items-center gap-2.5 shrink-0">
+            <div className="relative flex sm:flex-col items-center gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsCustomizing(true)}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.08] hover:text-white active:scale-95 shadow-md cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-slate-200 backdrop-blur-sm transition-all hover:bg-white/[0.09] hover:border-white/20 hover:text-white hover:-translate-y-0.5 active:scale-95 shadow-md cursor-pointer"
               >
                 <Palette className="h-4 w-4" style={{ color: activeGlow.primary }} />
                 <span>Theme</span>
@@ -759,7 +881,7 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={handleShare}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.08] hover:text-white active:scale-95 shadow-md cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-slate-300 backdrop-blur-sm transition-all hover:bg-white/[0.09] hover:border-white/20 hover:text-white hover:-translate-y-0.5 active:scale-95 shadow-md cursor-pointer"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-emerald-400" />
@@ -776,7 +898,7 @@ export default function Profile() {
             2. 📊 YOUR MUSIC STATS
         ====================================================== */}
         <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-slate-400 mb-3.5 flex items-center gap-2">
             <Flame className="w-4 h-4 text-amber-400" />
             Your Music Stats
           </h2>
@@ -816,10 +938,11 @@ export default function Profile() {
               return (
                 <div
                   key={item.label}
-                  className="rounded-2xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 text-center transition-all duration-300 hover:border-white/15 hover:-translate-y-1 hover:shadow-xl group"
+                  className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-b from-slate-900/70 to-slate-900/40 backdrop-blur-xl p-5 text-center transition-all duration-300 hover:border-white/15 hover:-translate-y-1 hover:shadow-2xl group"
                 >
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <div className={`p-2 rounded-xl ${item.bg}`}>
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                  <div className="flex items-center justify-center gap-2 mb-2.5">
+                    <div className={`p-2.5 rounded-xl ${item.bg} ring-1 ring-white/5 group-hover:scale-110 transition-transform duration-300`}>
                       <Icon className={`h-4 w-4 ${item.color}`} />
                     </div>
                   </div>
@@ -839,7 +962,8 @@ export default function Profile() {
             3. FACKIFY PREMIUM STATUS CARD & REQUEST
         ====================================================== */}
         {isUserPremium ? (
-          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 p-6 sm:p-7 backdrop-blur-2xl shadow-xl">
+          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 p-6 sm:p-7 backdrop-blur-2xl shadow-[0_20px_60px_-20px_rgba(245,158,11,0.35)]">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
               <Crown className="w-40 h-40 text-amber-400" />
             </div>
@@ -869,6 +993,7 @@ export default function Profile() {
           </div>
         ) : (
           <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/40 p-6 sm:p-7 backdrop-blur-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none" />
             <div>
               <div className="flex items-center gap-2">
                 <Crown className="h-5 w-5 text-amber-400" />
@@ -905,8 +1030,6 @@ export default function Profile() {
             4. RECENTLY PLAYED & FAVORITES
         ====================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* Recently Played Section */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-white mb-4 flex items-center justify-between">
@@ -988,7 +1111,6 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Favorites (Artists vs Tracks) */}
           <div className="rounded-3xl border border-white/5 bg-slate-900/50 backdrop-blur-xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -1218,6 +1340,12 @@ export default function Profile() {
           <div className="divide-y divide-white/5">
             {[
               {
+                icon: Camera,
+                title: 'Update Banner Cover Photo',
+                desc: 'Upload a picture from your laptop or save an online image URL.',
+                action: () => setShowCoverModal(true),
+              },
+              {
                 icon: User,
                 title: 'Edit Profile Information',
                 desc: 'Update your display name, username, and public avatar.',
@@ -1285,7 +1413,121 @@ export default function Profile() {
       </div>
 
       {/* =====================================================
-          7. THEME CUSTOMIZATION MODAL
+          COVER PHOTO UPLOAD MODAL
+      ====================================================== */}
+      {showCoverModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-2">
+                <Camera className="h-5 w-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Update Cover Photo</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCoverModal(false);
+                  setCoverError('');
+                }}
+                className="p-1 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {coverError && (
+              <p className="text-xs text-rose-400 font-medium bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-xl">
+                {coverError}
+              </p>
+            )}
+
+            {/* Option 1: Upload from Laptop / Device */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                Upload From Device (Laptop)
+              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={coverLoading}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-white/15 hover:border-emerald-400/50 bg-slate-950/60 rounded-2xl p-5 flex flex-col items-center justify-center gap-2 transition hover:bg-white/[0.02] cursor-pointer"
+              >
+                <UploadCloud className="w-7 h-7 text-emerald-400" />
+                <span className="text-xs font-bold text-slate-200">
+                  {coverLoading ? 'Uploading image...' : 'Click to browse image from laptop'}
+                </span>
+                <span className="text-[10px] text-slate-500">PNG, JPG, WebP up to 5MB</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-slate-600">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="font-semibold uppercase tracking-wider">or enter photo URL</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+
+            {/* Option 2: Image URL input */}
+            <form onSubmit={handleUrlCoverSave} className="space-y-3">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500">
+                  <LinkIcon className="w-4 h-4" />
+                </div>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/..."
+                  value={coverUrlInput}
+                  onChange={(e) => setCoverUrlInput(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 pl-9 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 transition"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2">
+                {coverPhoto && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveCover}
+                    disabled={coverLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Reset to Theme</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCoverModal(false);
+                      setCoverError('');
+                    }}
+                    className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={coverLoading || !coverUrlInput.trim()}
+                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 transition active:scale-95 cursor-pointer"
+                  >
+                    {coverLoading ? 'Saving...' : 'Save URL'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          THEME CUSTOMIZATION MODAL
       ====================================================== */}
       {isCustomizing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">

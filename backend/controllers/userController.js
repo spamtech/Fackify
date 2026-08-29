@@ -3,6 +3,44 @@ import { query } from '../config/db.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 // ============================================================
+// UPLOAD COVER PHOTO FROM LAPTOP
+// POST /api/users/profile/cover
+// Private
+// ============================================================
+export const uploadUserCover = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  if (!req.file) {
+    res.status(400);
+    throw new Error('Please select an image file to upload');
+  }
+
+  // Construct accessible URL
+  const coverUrl = `${req.protocol}://${req.get('host')}/uploads/covers/${req.file.filename}`;
+
+  const result = await query(
+    `
+    UPDATE users
+    SET cover_url = $1
+    WHERE id = $2
+    RETURNING id, username, email, role, bio, cover_url, created_at
+    `,
+    [coverUrl, userId]
+  );
+
+  if (result.rowCount === 0) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    cover_url: coverUrl,
+    user: result.rows[0],
+  });
+});
+
+// ============================================================
 // GET USER PROFILE SUMMARY (Full DB Aggregation)
 // GET /api/users/profile/summary
 // Private
@@ -20,6 +58,7 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
       u.role,
       u.created_at,
       u.bio,
+      u.cover_url,
       COALESCE(u.total_listening_seconds, 0)::int AS total_listening_seconds,
       (
         SELECT COUNT(*)
@@ -203,6 +242,7 @@ export const getUserProfileSummary = asyncHandler(async (req, res) => {
         role: user.role,
         created_at: user.created_at,
         bio: user.bio || '',
+        cover_url: user.cover_url || null,
         total_listening_seconds: totalSeconds,
       },
       stats: {
@@ -237,6 +277,7 @@ export const getUserProfile = asyncHandler(async (req, res) => {
       u.role,
       u.created_at,
       u.bio,
+      u.cover_url,
       COALESCE(u.total_listening_seconds, 0)::int AS total_listening_seconds,
       (
         SELECT COUNT(*)
@@ -329,7 +370,7 @@ export const updateListeningTime = asyncHandler(async (req, res) => {
 // ============================================================
 export const updateUserProfile = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { username, email, bio } = req.body;
+  const { username, email, bio, cover_url } = req.body;
 
   if (username && !username.trim()) {
     res.status(400);
@@ -351,6 +392,7 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
   const cleanUsername = username ? username.trim() : currentUser.username;
   const cleanEmail = email ? email.trim().toLowerCase() : currentUser.email;
   const cleanBio = bio !== undefined ? bio : currentUser.bio;
+  const cleanCoverUrl = cover_url !== undefined ? cover_url : currentUser.cover_url;
 
   if (username && cleanUsername.toLowerCase() !== currentUser.username.toLowerCase()) {
     const usernameCheck = await query(
@@ -380,17 +422,19 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     SET
       username = $1,
       email = $2,
-      bio = $3
-    WHERE id = $4
+      bio = $3,
+      cover_url = $4
+    WHERE id = $5
     RETURNING
       id,
       username,
       email,
       role,
       bio,
+      cover_url,
       created_at
     `,
-    [cleanUsername, cleanEmail, cleanBio, userId]
+    [cleanUsername, cleanEmail, cleanBio, cleanCoverUrl, userId]
   );
 
   res.status(200).json({

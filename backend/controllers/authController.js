@@ -66,7 +66,7 @@ export const registerUser = asyncHandler(async (req, res) => {
       (username, email, password, role, is_premium, premium_requested, last_login)
     VALUES
       ($1, $2, $3, $4, FALSE, FALSE, NOW())
-    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url, created_at, last_login
+    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url, cover_url, created_at, last_login
     `,
     [
       cleanUsername,
@@ -151,6 +151,7 @@ export const loginUser = asyncHandler(async (req, res) => {
       is_premium, 
       premium_requested,
       avatar_url,
+      cover_url,
       bio, 
       created_at, 
       last_login, 
@@ -196,7 +197,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
   let payload;
 
   try {
-    // Verify Google ID token
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -224,23 +224,17 @@ export const googleLogin = asyncHandler(async (req, res) => {
     picture,
   } = payload;
 
-  // Basic validation
   if (!googleId || !email) {
     res.status(401);
     throw new Error('Google account information is incomplete');
   }
 
-  // We require a verified Google email.
   if (!emailVerified) {
     res.status(401);
     throw new Error('Your Google email address is not verified');
   }
 
   const cleanEmail = email.trim().toLowerCase();
-
-  // ----------------------------------------------------------
-  // Find existing account by email
-  // ----------------------------------------------------------
 
   const existingResult = await query(
     `
@@ -253,6 +247,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       is_premium,
       premium_requested,
       avatar_url,
+      cover_url,
       bio,
       created_at,
       last_login
@@ -264,10 +259,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
   );
 
   let user;
-
-  // ----------------------------------------------------------
-  // Existing Fackify account
-  // ----------------------------------------------------------
 
   if (existingResult.rows.length > 0) {
     const existingUser = existingResult.rows[0];
@@ -287,6 +278,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
         is_premium, 
         premium_requested,
         avatar_url,
+        cover_url,
         bio, 
         created_at, 
         last_login, 
@@ -296,13 +288,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
     );
 
     user = updatedResult.rows[0];
-  }
-
-  // ----------------------------------------------------------
-  // New Google account
-  // ----------------------------------------------------------
-
-  else {
+  } else {
     let username = '';
 
     if (givenName) {
@@ -313,7 +299,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
       username = cleanEmail.split('@')[0];
     }
 
-    // Remove characters that aren't ideal for username
     username = username
       .replace(/[^a-zA-Z0-9_]/g, '')
       .slice(0, 30);
@@ -324,7 +309,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
       )}`;
     }
 
-    // Make username unique
     const usernameResult = await query(
       `
       SELECT id
@@ -364,6 +348,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
         is_premium,
         premium_requested,
         avatar_url,
+        cover_url,
         bio,
         created_at,
         last_login,
@@ -379,7 +364,6 @@ export const googleLogin = asyncHandler(async (req, res) => {
     user = newUserResult.rows[0];
   }
 
-  // Generate Fackify JWT + HTTP-only cookie
   generateToken(res, user);
 
   res.status(200).json({
@@ -434,6 +418,7 @@ export const getMe = asyncHandler(async (req, res) => {
       is_premium,
       premium_requested,
       avatar_url,
+      cover_url,
       bio,
       created_at,
       last_login,
@@ -482,6 +467,7 @@ export const requestPremium = asyncHandler(async (req, res) => {
       is_premium,
       premium_requested,
       avatar_url,
+      cover_url,
       bio,
       created_at,
       last_login,
@@ -503,14 +489,14 @@ export const requestPremium = asyncHandler(async (req, res) => {
 });
 
 // ============================================================
-// UPDATE USER PROFILE (USERNAME & BIO)
+// UPDATE USER PROFILE (USERNAME, BIO & COVER URL)
 // PUT /api/auth/profile
 // ACCESS: Private
 // ============================================================
 
 export const updateProfile = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
-  const { username, bio } = req.body;
+  const { username, bio, cover_url } = req.body;
 
   if (!userId) {
     res.status(401);
@@ -519,13 +505,13 @@ export const updateProfile = asyncHandler(async (req, res) => {
 
   const cleanUsername = username ? username.trim() : null;
   const cleanBio = bio !== undefined ? bio.trim() : null;
+  const cleanCoverUrl = cover_url !== undefined ? cover_url : null;
 
   if (cleanUsername && cleanUsername.length < 3) {
     res.status(400);
     throw new Error('Username must be at least 3 characters');
   }
 
-  // If username is changing, ensure it is not taken by another user
   if (cleanUsername) {
     const existing = await query(
       `
@@ -543,14 +529,14 @@ export const updateProfile = asyncHandler(async (req, res) => {
     }
   }
 
-  // Update profile with COALESCE to keep existing values if unchanged
   const updateResult = await query(
     `
     UPDATE users
     SET
       username = COALESCE($1, username),
-      bio = COALESCE($2, bio)
-    WHERE id = $3
+      bio = COALESCE($2, bio),
+      cover_url = COALESCE($3, cover_url)
+    WHERE id = $4
     RETURNING
       id,
       username,
@@ -559,12 +545,13 @@ export const updateProfile = asyncHandler(async (req, res) => {
       is_premium,
       premium_requested,
       avatar_url,
+      cover_url,
       bio,
       created_at,
       last_login,
       COALESCE(total_listening_seconds, 0)::int AS total_listening_seconds
     `,
-    [cleanUsername, cleanBio, userId]
+    [cleanUsername, cleanBio, cleanCoverUrl, userId]
   );
 
   if (updateResult.rows.length === 0) {
@@ -594,7 +581,6 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
     throw new Error('blocked must be a boolean');
   }
 
-  // Prevent admin from blocking themselves
   if (String(id) === String(req.user.id)) {
     res.status(400);
     throw new Error('You cannot block your own account');
@@ -613,6 +599,7 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
       is_premium,
       premium_requested,
       avatar_url,
+      cover_url,
       blocked,
       created_at,
       last_login
@@ -643,13 +630,11 @@ export const updateUserBlockStatus = asyncHandler(async (req, res) => {
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  // Prevent admin from deleting themselves
   if (String(id) === String(req.user.id)) {
     res.status(400);
     throw new Error('You cannot delete your own admin account');
   }
 
-  // Check user exists
   const userResult = await query(
     `
     SELECT id, username, email, role
@@ -697,7 +682,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
     `
     DELETE FROM users
     WHERE id = $1
-    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url
+    RETURNING id, username, email, role, is_premium, premium_requested, avatar_url, cover_url
     `,
     [id]
   );
