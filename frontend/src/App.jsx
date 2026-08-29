@@ -20,6 +20,7 @@ import LikedSongs from './pages/LikedSongs';
 import Playlists from './pages/Playlists';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
+import Contact from './pages/Contact';
 
 /* ============================================================
    ARTIST PAGES
@@ -134,6 +135,14 @@ export default function App() {
                   <Route
                     path="/notifications"
                     element={<Notifications />}
+                  />
+
+
+                  {/* Contact Support */}
+
+                  <Route
+                    path="/contact"
+                    element={<Contact />}
                   />
 
 

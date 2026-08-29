@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Link,
   useNavigate,
@@ -6,6 +6,7 @@ import {
 } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axiosInstance';
 
 import {
   LogOut,
@@ -23,6 +24,7 @@ import {
   Instagram,
   Users,
   Sparkles,
+  Send,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -31,13 +33,35 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [mobileMenuOpen, setMobileMenuOpen] =
-    useState(false);
-
-  const [userMenuOpen, setUserMenuOpen] =
-    useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const userMenuRef = useRef(null);
+
+  /* =========================================================
+     FETCH UNREAD MESSAGES BADGE (ADMIN ONLY)
+  ========================================================= */
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (user?.role !== 'admin') return;
+    try {
+      const res = await api.get('/contact/admin/messages');
+      if (res.data?.success) {
+        setUnreadMessages(Number(res.data.unreadCount || 0));
+      }
+    } catch {
+      // Quiet fail if not admin or network error
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      fetchUnreadCount();
+      const interval = setInterval(fetchUnreadCount, 15000); // 15-second live badge poll
+      return () => clearInterval(interval);
+    }
+  }, [user?.role, fetchUnreadCount]);
 
   /* =========================================================
      LOGOUT
@@ -52,10 +76,7 @@ export default function Navbar() {
 
       navigate('/login');
     } catch (error) {
-      console.error(
-        'Logout error:',
-        error
-      );
+      console.error('Logout error:', error);
     }
   };
 
@@ -97,16 +118,10 @@ export default function Navbar() {
       }
     };
 
-    document.addEventListener(
-      'mousedown',
-      handleOutsideClick
-    );
+    document.addEventListener('mousedown', handleOutsideClick);
 
     return () => {
-      document.removeEventListener(
-        'mousedown',
-        handleOutsideClick
-      );
+      document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, []);
 
@@ -178,10 +193,7 @@ export default function Navbar() {
      ICON COLOR
   ========================================================= */
 
-  const getIconClass = (
-    path,
-    color = 'emerald'
-  ) => {
+  const getIconClass = (path, color = 'emerald') => {
     const active = isActive(path);
 
     if (color === 'rose') {
@@ -211,9 +223,7 @@ export default function Navbar() {
      ACTIVE INDICATOR
   ========================================================= */
 
-  const ActiveIndicator = ({
-    color = 'emerald',
-  }) => {
+  const ActiveIndicator = ({ color = 'emerald' }) => {
     if (color === 'rose') {
       return (
         <span
@@ -251,10 +261,6 @@ export default function Navbar() {
     );
   };
 
-  /* =========================================================
-     NO USER
-  ========================================================= */
-
   if (!user) {
     return null;
   }
@@ -272,10 +278,7 @@ export default function Navbar() {
         lg:px-6
       "
     >
-      {/* =====================================================
-          OUTER AMBIENT GLOW
-      ====================================================== */}
-
+      {/* OUTER AMBIENT GLOW */}
       <div
         className="
           pointer-events-none
@@ -305,21 +308,8 @@ export default function Navbar() {
         "
       />
 
-      {/* =====================================================
-          FLOATING NAVBAR
-      ====================================================== */}
-
-      <div
-        className="
-          relative
-          mx-auto
-          max-w-7xl
-        "
-      >
-        {/* ===================================================
-            OUTER GLOW LAYER
-        ==================================================== */}
-
+      {/* FLOATING NAVBAR */}
+      <div className="relative mx-auto max-w-7xl">
         <div
           className="
             pointer-events-none
@@ -335,10 +325,7 @@ export default function Navbar() {
           "
         />
 
-        {/* ===================================================
-            MAIN GLASS PANEL
-        ==================================================== */}
-
+        {/* MAIN GLASS PANEL */}
         <div
           className="
             relative
@@ -353,10 +340,6 @@ export default function Navbar() {
             backdrop-saturate-150
           "
         >
-          {/* =================================================
-              INNER GRADIENT
-          ================================================== */}
-
           <div
             className="
               pointer-events-none
@@ -369,10 +352,6 @@ export default function Navbar() {
               to-cyan-500/[0.035]
             "
           />
-
-          {/* =================================================
-              TOP LIGHT
-          ================================================== */}
 
           <div
             className="
@@ -388,48 +367,7 @@ export default function Navbar() {
             "
           />
 
-          {/* =================================================
-              LEFT LIGHT
-          ================================================== */}
-
-          <div
-            className="
-              pointer-events-none
-              absolute
-              left-0
-              top-1/2
-              h-20
-              w-20
-              -translate-y-1/2
-              rounded-full
-              bg-emerald-400/[0.04]
-              blur-2xl
-            "
-          />
-
-          {/* =================================================
-              RIGHT LIGHT
-          ================================================== */}
-
-          <div
-            className="
-              pointer-events-none
-              absolute
-              right-0
-              top-1/2
-              h-20
-              w-20
-              -translate-y-1/2
-              rounded-full
-              bg-cyan-400/[0.035]
-              blur-2xl
-            "
-          />
-
-          {/* =================================================
-              NAV CONTENT
-          ================================================== */}
-
+          {/* NAV CONTENT */}
           <div
             className="
               relative
@@ -443,23 +381,12 @@ export default function Navbar() {
               lg:px-6
             "
           >
-            {/* =================================================
-                LOGO
-            ================================================== */}
-
+            {/* LOGO */}
             <Link
               to="/"
               onClick={closeMobileMenu}
-              className="
-                group
-                flex
-                shrink-0
-                items-center
-                gap-3
-              "
+              className="group flex shrink-0 items-center gap-3"
             >
-              {/* Logo Icon */}
-
               <div className="relative">
                 <div
                   className="
@@ -500,15 +427,7 @@ export default function Navbar() {
                     group-hover:rotate-2
                   "
                 >
-                  <Music2
-                    className="
-                      relative
-                      z-10
-                      h-5
-                      w-5
-                    "
-                  />
-
+                  <Music2 className="relative z-10 h-5 w-5" />
                   <div
                     className="
                       absolute
@@ -527,21 +446,11 @@ export default function Navbar() {
                 </div>
               </div>
 
-              {/* Logo Text */}
-
               <div className="hidden sm:block">
                 <div className="flex items-center gap-2">
-                  <span
-                    className="
-                      text-lg
-                      font-black
-                      tracking-tight
-                      text-white
-                    "
-                  >
+                  <span className="text-lg font-black tracking-tight text-white">
                     Fackify
                   </span>
-
                   <span
                     className="
                       rounded-full
@@ -560,7 +469,6 @@ export default function Navbar() {
                     Music
                   </span>
                 </div>
-
                 <div
                   className="
                     mt-0.5
@@ -576,174 +484,58 @@ export default function Navbar() {
               </div>
             </Link>
 
-            {/* =================================================
-                DESKTOP NAVIGATION
-            ================================================== */}
-
-            <nav
-              className="
-                hidden
-                items-center
-                gap-1
-                xl:flex
-              "
-            >
-              {/* Dashboard */}
-
-              <Link
-                to="/dashboard"
-                className={navItemClass(
-                  '/dashboard'
-                )}
-              >
-                <LayoutDashboard
-                  className={getIconClass(
-                    '/dashboard'
-                  )}
-                />
-
-                <span>
-                  Dashboard
-                </span>
-
-                {isActive(
-                  '/dashboard'
-                ) && (
-                  <ActiveIndicator />
-                )}
+            {/* DESKTOP NAVIGATION */}
+            <nav className="hidden items-center gap-1 xl:flex">
+              <Link to="/dashboard" className={navItemClass('/dashboard')}>
+                <LayoutDashboard className={getIconClass('/dashboard')} />
+                <span>Dashboard</span>
+                {isActive('/dashboard') && <ActiveIndicator />}
               </Link>
 
-              {/* Liked */}
-
-              <Link
-                to="/liked"
-                className={navItemClass(
-                  '/liked',
-                  'rose'
-                )}
-              >
-                <Heart
-                  className={getIconClass(
-                    '/liked',
-                    'rose'
-                  )}
-                />
-
-                <span>
-                  Liked
-                </span>
-
-                {isActive('/liked') && (
-                  <ActiveIndicator color="rose" />
-                )}
+              <Link to="/liked" className={navItemClass('/liked', 'rose')}>
+                <Heart className={getIconClass('/liked', 'rose')} />
+                <span>Liked</span>
+                {isActive('/liked') && <ActiveIndicator color="rose" />}
               </Link>
-
-              {/* Artists */}
 
               {user.role !== 'admin' && (
-                <Link
-                  to="/artists"
-                  className={navItemClass(
-                    '/artists'
-                  )}
-                >
-                  <Users
-                    className={getIconClass(
-                      '/artists'
-                    )}
-                  />
-
-                  <span>
-                    Artists
-                  </span>
-
-                  {isActive(
-                    '/artists'
-                  ) && (
-                    <ActiveIndicator />
-                  )}
+                <Link to="/artists" className={navItemClass('/artists')}>
+                  <Users className={getIconClass('/artists')} />
+                  <span>Artists</span>
+                  {isActive('/artists') && <ActiveIndicator />}
                 </Link>
               )}
 
-              {/* Playlists */}
-
-              <Link
-                to="/playlists"
-                className={navItemClass(
-                  '/playlists'
-                )}
-              >
-                <ListMusic
-                  className={getIconClass(
-                    '/playlists'
-                  )}
-                />
-
-                <span>
-                  Playlists
-                </span>
-
-                {isActive(
-                  '/playlists'
-                ) && (
-                  <ActiveIndicator />
-                )}
+              <Link to="/playlists" className={navItemClass('/playlists')}>
+                <ListMusic className={getIconClass('/playlists')} />
+                <span>Playlists</span>
+                {isActive('/playlists') && <ActiveIndicator />}
               </Link>
 
-              {/* Notifications */}
-
               {user.role !== 'admin' && (
-                <Link
-                  to="/notifications"
-                  className={navItemClass(
-                    '/notifications'
-                  )}
-                >
-                  <Bell
-                    className={getIconClass(
-                      '/notifications'
-                    )}
-                  />
-
-                  <span>
-                    Notifications
-                  </span>
-
-                  {isActive(
-                    '/notifications'
-                  ) && (
-                    <ActiveIndicator />
-                  )}
+                <Link to="/notifications" className={navItemClass('/notifications')}>
+                  <Bell className={getIconClass('/notifications')} />
+                  <span>Notifications</span>
+                  {isActive('/notifications') && <ActiveIndicator />}
                 </Link>
               )}
 
-              {/* Profile */}
+              {/* USER CONTACT LINK */}
+              {user.role !== 'admin' && (
+                <Link to="/contact" className={navItemClass('/contact')}>
+                  <Send className={getIconClass('/contact')} />
+                  <span>Contact</span>
+                  {isActive('/contact') && <ActiveIndicator />}
+                </Link>
+              )}
 
-              <Link
-                to="/profile"
-                className={navItemClass(
-                  '/profile'
-                )}
-              >
-                <User
-                  className={getIconClass(
-                    '/profile'
-                  )}
-                />
-
-                <span>
-                  Profile
-                </span>
-
-                {isActive('/profile') && (
-                  <ActiveIndicator />
-                )}
+              <Link to="/profile" className={navItemClass('/profile')}>
+                <User className={getIconClass('/profile')} />
+                <span>Profile</span>
+                {isActive('/profile') && <ActiveIndicator />}
               </Link>
 
-              {/* =================================================
-                  ADMIN
-              ================================================== */}
-
+              {/* ADMIN LINK WITH REAL-TIME UNREAD COUNTER BADGE */}
               {user.role === 'admin' && (
                 <Link
                   to="/admin"
@@ -768,18 +560,20 @@ export default function Navbar() {
                     hover:border-emerald-400/30
                     hover:bg-emerald-400/[0.12]
                     hover:shadow-emerald-500/10
+                    relative
                   "
                 >
                   <ShieldCheck className="h-4 w-4" />
-
-                  Admin
+                  <span>Admin</span>
+                  {unreadMessages > 0 && (
+                    <span className="flex h-5 min-w-[20px] px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white animate-bounce shadow-md">
+                      {unreadMessages}
+                    </span>
+                  )}
                 </Link>
               )}
 
-              {/* =================================================
-                  SOCIAL CONNECTION
-              ================================================== */}
-
+              {/* SOCIAL CONNECTION */}
               {user.role !== 'admin' && (
                 <div
                   className="
@@ -792,8 +586,6 @@ export default function Navbar() {
                     pl-2
                   "
                 >
-                  {/* WhatsApp */}
-
                   <a
                     href="https://wa.me/917810828802"
                     target="_blank"
@@ -822,8 +614,6 @@ export default function Navbar() {
                   >
                     <MessageCircle className="h-4 w-4" />
                   </a>
-
-                  {/* Instagram */}
 
                   <a
                     href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
@@ -857,27 +647,12 @@ export default function Navbar() {
               )}
             </nav>
 
-            {/* =================================================
-                RIGHT SIDE
-            ================================================== */}
-
+            {/* RIGHT SIDE USER AVATAR & DROPDOWN */}
             <div className="flex items-center gap-2">
-              {/* =================================================
-                  USER MENU
-              ================================================== */}
-
-              <div
-                ref={userMenuRef}
-                className="relative"
-              >
+              <div ref={userMenuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() =>
-                    setUserMenuOpen(
-                      (previous) =>
-                        !previous
-                    )
-                  }
+                  onClick={() => setUserMenuOpen((previous) => !previous)}
                   className="
                     group
                     flex
@@ -894,8 +669,6 @@ export default function Navbar() {
                     hover:bg-white/[0.045]
                   "
                 >
-                  {/* Avatar */}
-
                   <div className="relative">
                     <div
                       className="
@@ -923,10 +696,7 @@ export default function Navbar() {
                         group-hover:shadow-emerald-500/10
                       "
                     >
-                      {user.username
-                        ?.charAt(0)
-                        ?.toUpperCase() ||
-                        'U'}
+                      {user.username?.charAt(0)?.toUpperCase() || 'U'}
                     </div>
 
                     <span
@@ -945,27 +715,10 @@ export default function Navbar() {
                     />
                   </div>
 
-                  {/* User Info */}
-
-                  <div
-                    className="
-                      hidden
-                      max-w-28
-                      text-left
-                      sm:block
-                    "
-                  >
-                    <p
-                      className="
-                        truncate
-                        text-xs
-                        font-bold
-                        text-slate-200
-                      "
-                    >
+                  <div className="hidden max-w-28 text-left sm:block">
+                    <p className="truncate text-xs font-bold text-slate-200">
                       {user.username}
                     </p>
-
                     <p
                       className="
                         mt-0.5
@@ -989,18 +742,10 @@ export default function Navbar() {
                       transition-transform
                       duration-300
                       sm:block
-                      ${
-                        userMenuOpen
-                          ? 'rotate-180 text-emerald-400'
-                          : ''
-                      }
+                      ${userMenuOpen ? 'rotate-180 text-emerald-400' : ''}
                     `}
                   />
                 </button>
-
-                {/* =================================================
-                    USER DROPDOWN
-                ================================================== */}
 
                 {userMenuOpen && (
                   <div
@@ -1021,8 +766,6 @@ export default function Navbar() {
                       backdrop-saturate-150
                     "
                   >
-                    {/* Dropdown Glow */}
-
                     <div
                       className="
                         pointer-events-none
@@ -1035,23 +778,6 @@ export default function Navbar() {
                         to-transparent
                       "
                     />
-
-                    {/* Top Border */}
-
-                    <div
-                      className="
-                        absolute
-                        inset-x-8
-                        top-0
-                        h-px
-                        bg-gradient-to-r
-                        from-transparent
-                        via-emerald-300/40
-                        to-transparent
-                      "
-                    />
-
-                    {/* Profile Header */}
 
                     <div
                       className="
@@ -1083,35 +809,16 @@ export default function Navbar() {
                             shadow-emerald-500/10
                           "
                         >
-                          {user.username
-                            ?.charAt(0)
-                            ?.toUpperCase() ||
-                            'U'}
+                          {user.username?.charAt(0)?.toUpperCase() || 'U'}
                         </div>
 
                         <div className="min-w-0">
-                          <p
-                            className="
-                              truncate
-                              text-sm
-                              font-bold
-                              text-white
-                            "
-                          >
+                          <p className="truncate text-sm font-bold text-white">
                             {user.username}
                           </p>
-
-                          <p
-                            className="
-                              mt-1
-                              truncate
-                              text-[10px]
-                              text-slate-500
-                            "
-                          >
+                          <p className="mt-1 truncate text-[10px] text-slate-500">
                             {user.email}
                           </p>
-
                           <div
                             className="
                               mt-2
@@ -1132,18 +839,13 @@ export default function Navbar() {
                             "
                           >
                             <Sparkles className="h-2.5 w-2.5" />
-
                             {user.role}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Quick Links */}
-
                     <div className="p-2">
-                      {/* Profile */}
-
                       <Link
                         to="/profile"
                         onClick={closeUserMenu}
@@ -1164,21 +866,35 @@ export default function Navbar() {
                           hover:text-white
                         "
                       >
-                        <User
-                          className="
-                            h-4
-                            w-4
-                            text-emerald-400
-                            transition-transform
-                            duration-200
-                            group-hover:scale-110
-                          "
-                        />
-
+                        <User className="h-4 w-4 text-emerald-400" />
                         Profile
                       </Link>
 
-                      {/* Artists */}
+                      {user.role !== 'admin' && (
+                        <Link
+                          to="/contact"
+                          onClick={closeUserMenu}
+                          className="
+                            group
+                            flex
+                            items-center
+                            gap-3
+                            rounded-xl
+                            px-3
+                            py-2.5
+                            text-xs
+                            font-semibold
+                            text-slate-400
+                            transition-all
+                            duration-200
+                            hover:bg-white/[0.05]
+                            hover:text-white
+                          "
+                        >
+                          <Send className="h-4 w-4 text-emerald-400" />
+                          Contact Support
+                        </Link>
+                      )}
 
                       {user.role !== 'admin' && (
                         <Link
@@ -1201,22 +917,10 @@ export default function Navbar() {
                             hover:text-white
                           "
                         >
-                          <Users
-                            className="
-                              h-4
-                              w-4
-                              text-emerald-400
-                              transition-transform
-                              duration-200
-                              group-hover:scale-110
-                            "
-                          />
-
+                          <Users className="h-4 w-4 text-emerald-400" />
                           Artists
                         </Link>
                       )}
-
-                      {/* Playlists */}
 
                       <Link
                         to="/playlists"
@@ -1238,21 +942,9 @@ export default function Navbar() {
                           hover:text-white
                         "
                       >
-                        <ListMusic
-                          className="
-                            h-4
-                            w-4
-                            text-emerald-400
-                            transition-transform
-                            duration-200
-                            group-hover:scale-110
-                          "
-                        />
-
+                        <ListMusic className="h-4 w-4 text-emerald-400" />
                         My Playlists
                       </Link>
-
-                      {/* Notifications */}
 
                       {user.role !== 'admin' && (
                         <Link
@@ -1275,22 +967,10 @@ export default function Navbar() {
                             hover:text-white
                           "
                         >
-                          <Bell
-                            className="
-                              h-4
-                              w-4
-                              text-emerald-400
-                              transition-transform
-                              duration-200
-                              group-hover:scale-110
-                            "
-                          />
-
+                          <Bell className="h-4 w-4 text-emerald-400" />
                           Notifications
                         </Link>
                       )}
-
-                      {/* Admin */}
 
                       {user.role === 'admin' && (
                         <Link
@@ -1300,7 +980,7 @@ export default function Navbar() {
                             group
                             flex
                             items-center
-                            gap-3
+                            justify-between
                             rounded-xl
                             px-3
                             py-2.5
@@ -1313,131 +993,52 @@ export default function Navbar() {
                             hover:text-emerald-400
                           "
                         >
-                          <ShieldCheck
-                            className="
-                              h-4
-                              w-4
-                              text-emerald-400
-                            "
-                          />
-
-                          Admin Panel
+                          <div className="flex items-center gap-3">
+                            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                            <span>Admin Panel</span>
+                          </div>
+                          {unreadMessages > 0 && (
+                            <span className="h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                              {unreadMessages}
+                            </span>
+                          )}
                         </Link>
                       )}
                     </div>
 
-                    {/* Connect */}
-
                     {user.role !== 'admin' && (
-                      <div
-                        className="
-                          border-t
-                          border-white/[0.06]
-                          p-2
-                        "
-                      >
-                        <p
-                          className="
-                            px-3
-                            py-2
-                            text-[9px]
-                            font-bold
-                            uppercase
-                            tracking-[0.18em]
-                            text-slate-600
-                          "
-                        >
+                      <div className="border-t border-white/[0.06] p-2">
+                        <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">
                           Connect with Admin
                         </p>
-
-                        {/* WhatsApp */}
-
                         <a
                           href="https://wa.me/917810828802"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="
-                            flex
-                            items-center
-                            gap-3
-                            rounded-xl
-                            px-3
-                            py-2.5
-                            text-xs
-                            font-semibold
-                            text-slate-400
-                            transition-all
-                            duration-200
-                            hover:bg-emerald-500/[0.08]
-                            hover:text-emerald-400
-                          "
+                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-400 hover:bg-emerald-500/[0.08] hover:text-emerald-400 transition"
                         >
                           <MessageCircle className="h-4 w-4 text-emerald-400" />
-
                           WhatsApp
                         </a>
-
-                        {/* Instagram */}
-
                         <a
                           href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="
-                            flex
-                            items-center
-                            gap-3
-                            rounded-xl
-                            px-3
-                            py-2.5
-                            text-xs
-                            font-semibold
-                            text-slate-400
-                            transition-all
-                            duration-200
-                            hover:bg-pink-500/[0.08]
-                            hover:text-pink-400
-                          "
+                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-400 hover:bg-pink-500/[0.08] hover:text-pink-400 transition"
                         >
                           <Instagram className="h-4 w-4 text-pink-400" />
-
                           Instagram
                         </a>
                       </div>
                     )}
 
-                    {/* Logout */}
-
-                    <div
-                      className="
-                        border-t
-                        border-white/[0.06]
-                        p-2
-                      "
-                    >
+                    <div className="border-t border-white/[0.06] p-2">
                       <button
                         type="button"
                         onClick={handleLogout}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          gap-3
-                          rounded-xl
-                          px-3
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-semibold
-                          text-slate-400
-                          transition-all
-                          duration-200
-                          hover:bg-rose-500/[0.08]
-                          hover:text-rose-400
-                        "
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-slate-400 hover:bg-rose-500/[0.08] hover:text-rose-400 transition"
                       >
                         <LogOut className="h-4 w-4" />
-
                         Sign out
                       </button>
                     </div>
@@ -1445,18 +1046,10 @@ export default function Navbar() {
                 )}
               </div>
 
-              {/* =================================================
-                  MOBILE MENU BUTTON
-              ================================================== */}
-
+              {/* MOBILE MENU TOGGLE BUTTON */}
               <button
                 type="button"
-                onClick={() =>
-                  setMobileMenuOpen(
-                    (previous) =>
-                      !previous
-                  )
-                }
+                onClick={() => setMobileMenuOpen((previous) => !previous)}
                 aria-label="Toggle navigation menu"
                 className="
                   flex
@@ -1489,10 +1082,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* =================================================
-              MOBILE NAVIGATION
-          ================================================== */}
-
+          {/* MOBILE NAVIGATION DRAWER */}
           {mobileMenuOpen && (
             <div
               className="
@@ -1508,284 +1098,115 @@ export default function Navbar() {
               "
             >
               <nav className="space-y-1">
-                {/* Dashboard */}
-
                 <Link
                   to="/dashboard"
                   onClick={closeMobileMenu}
-                  className="
-                    flex
-                    items-center
-                    gap-3
-                    rounded-2xl
-                    border
-                    border-transparent
-                    px-4
-                    py-3
-                    text-xs
-                    font-semibold
-                    text-slate-400
-                    transition-all
-                    hover:border-white/[0.06]
-                    hover:bg-white/[0.05]
-                    hover:text-white
-                  "
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05] hover:text-white transition"
                 >
                   <LayoutDashboard className="h-4 w-4 text-emerald-400" />
-
                   Dashboard
                 </Link>
-
-                {/* Liked */}
 
                 <Link
                   to="/liked"
                   onClick={closeMobileMenu}
-                  className="
-                    flex
-                    items-center
-                    gap-3
-                    rounded-2xl
-                    border
-                    border-transparent
-                    px-4
-                    py-3
-                    text-xs
-                    font-semibold
-                    text-slate-400
-                    transition-all
-                    hover:border-rose-400/[0.06]
-                    hover:bg-rose-500/[0.05]
-                    hover:text-white
-                  "
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-rose-500/[0.05] hover:text-white transition"
                 >
                   <Heart className="h-4 w-4 text-rose-400" />
-
                   Liked Songs
                 </Link>
-
-                {/* Artists */}
 
                 {user.role !== 'admin' && (
                   <Link
                     to="/artists"
                     onClick={closeMobileMenu}
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-2xl
-                      border
-                      border-transparent
-                      px-4
-                      py-3
-                      text-xs
-                      font-semibold
-                      text-slate-400
-                      transition-all
-                      hover:border-white/[0.06]
-                      hover:bg-white/[0.05]
-                      hover:text-white
-                    "
+                    className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05] hover:text-white transition"
                   >
                     <Users className="h-4 w-4 text-emerald-400" />
-
                     Artists
                   </Link>
                 )}
 
-                {/* Playlists */}
-
                 <Link
                   to="/playlists"
                   onClick={closeMobileMenu}
-                  className="
-                    flex
-                    items-center
-                    gap-3
-                    rounded-2xl
-                    border
-                    border-transparent
-                    px-4
-                    py-3
-                    text-xs
-                    font-semibold
-                    text-slate-400
-                    transition-all
-                    hover:border-white/[0.06]
-                    hover:bg-white/[0.05]
-                    hover:text-white
-                  "
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05] hover:text-white transition"
                 >
                   <ListMusic className="h-4 w-4 text-emerald-400" />
-
                   Playlists
                 </Link>
-
-                {/* Notifications */}
 
                 {user.role !== 'admin' && (
                   <Link
                     to="/notifications"
                     onClick={closeMobileMenu}
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-2xl
-                      border
-                      border-transparent
-                      px-4
-                      py-3
-                      text-xs
-                      font-semibold
-                      text-slate-400
-                      transition-all
-                      hover:border-white/[0.06]
-                      hover:bg-white/[0.05]
-                      hover:text-white
-                    "
+                    className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05] hover:text-white transition"
                   >
                     <Bell className="h-4 w-4 text-emerald-400" />
-
                     Notifications
                   </Link>
                 )}
 
-                {/* Profile */}
+                {/* USER CONTACT LINK IN MOBILE MENU */}
+                {user.role !== 'admin' && (
+                  <Link
+                    to="/contact"
+                    onClick={closeMobileMenu}
+                    className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-emerald-500/[0.05] hover:text-white transition"
+                  >
+                    <Send className="h-4 w-4 text-emerald-400" />
+                    Contact Support
+                  </Link>
+                )}
 
                 <Link
                   to="/profile"
                   onClick={closeMobileMenu}
-                  className="
-                    flex
-                    items-center
-                    gap-3
-                    rounded-2xl
-                    border
-                    border-transparent
-                    px-4
-                    py-3
-                    text-xs
-                    font-semibold
-                    text-slate-400
-                    transition-all
-                    hover:border-white/[0.06]
-                    hover:bg-white/[0.05]
-                    hover:text-white
-                  "
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05] hover:text-white transition"
                 >
                   <User className="h-4 w-4 text-emerald-400" />
-
                   Profile
                 </Link>
-
-                {/* Admin */}
 
                 {user.role === 'admin' && (
                   <Link
                     to="/admin"
                     onClick={closeMobileMenu}
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-2xl
-                      border
-                      border-emerald-400/15
-                      bg-emerald-400/[0.05]
-                      px-4
-                      py-3
-                      text-xs
-                      font-semibold
-                      text-emerald-400
-                      transition-all
-                      hover:border-emerald-400/25
-                      hover:bg-emerald-400/[0.09]
-                    "
+                    className="flex items-center justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.05] px-4 py-3 text-xs font-semibold text-emerald-400 transition"
                   >
-                    <ShieldCheck className="h-4 w-4" />
-
-                    Admin Panel
+                    <div className="flex items-center gap-3">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Admin Panel</span>
+                    </div>
+                    {unreadMessages > 0 && (
+                      <span className="h-5 px-2 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                        {unreadMessages}
+                      </span>
+                    )}
                   </Link>
                 )}
 
-                {/* =================================================
-                    CONNECT
-                ================================================== */}
-
                 {user.role !== 'admin' && (
-                  <div
-                    className="
-                      mt-2
-                      border-t
-                      border-white/[0.06]
-                      pt-2
-                    "
-                  >
-                    <p
-                      className="
-                        px-4
-                        py-2
-                        text-[9px]
-                        font-bold
-                        uppercase
-                        tracking-[0.18em]
-                        text-slate-600
-                      "
-                    >
+                  <div className="mt-2 border-t border-white/[0.06] pt-2">
+                    <p className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">
                       Connect with Admin
                     </p>
-
-                    {/* WhatsApp */}
-
                     <a
                       href="https://wa.me/917810828802"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="
-                        flex
-                        items-center
-                        gap-3
-                        rounded-2xl
-                        px-4
-                        py-3
-                        text-xs
-                        font-semibold
-                        text-slate-400
-                        transition-all
-                        hover:bg-emerald-500/[0.07]
-                        hover:text-emerald-400
-                      "
+                      className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-emerald-500/[0.07] hover:text-emerald-400 transition"
                     >
                       <MessageCircle className="h-4 w-4 text-emerald-400" />
-
                       WhatsApp
                     </a>
-
-                    {/* Instagram */}
-
                     <a
                       href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="
-                        flex
-                        items-center
-                        gap-3
-                        rounded-2xl
-                        px-4
-                        py-3
-                        text-xs
-                        font-semibold
-                        text-slate-400
-                        transition-all
-                        hover:bg-pink-500/[0.07]
-                        hover:text-pink-400
-                      "
+                      className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-pink-500/[0.07] hover:text-pink-400 transition"
                     >
                       <Instagram className="h-4 w-4 text-pink-400" />
-
                       Instagram
                     </a>
                   </div>
@@ -1795,33 +1216,6 @@ export default function Navbar() {
           )}
         </div>
       </div>
-
-      {/* =====================================================
-          NAVBAR ANIMATIONS
-      ====================================================== */}
-
-      <style>{`
-        @keyframes fackifyNavbarGlow {
-          0% {
-            opacity: 0.45;
-            transform: scaleX(0.92);
-          }
-
-          50% {
-            opacity: 0.8;
-            transform: scaleX(1);
-          }
-
-          100% {
-            opacity: 0.45;
-            transform: scaleX(0.92);
-          }
-        }
-
-        .fackify-navbar-glow {
-          animation: fackifyNavbarGlow 5s ease-in-out infinite;
-        }
-      `}</style>
     </header>
   );
 }

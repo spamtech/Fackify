@@ -9,6 +9,7 @@ import {
   Activity,
   AlertCircle,
   Calendar,
+  Check,
   CheckCircle2,
   Clock,
   CopyCheck,
@@ -23,8 +24,10 @@ import {
   ListMusic,
   Lock,
   Mail,
+  MessageSquare,
   Mic2,
   Music2,
+  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -90,33 +93,12 @@ const formatDateIST = (value) => {
 
 const AdminDashboard = () => {
 
-  // ==========================================================
-  // TABS
-  // ==========================================================
-
   const [activeTab, setActiveTab] = useState('songs');
-
-  const tabs = [
-    { id: 'songs', label: 'Songs', icon: Music2 },
-    { id: 'artists', label: 'Artists', icon: Mic2 },
-    { id: 'likes', label: 'Likes', icon: Heart },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'playlists', label: 'Playlists', icon: ListMusic },
-  ];
-
-
-  // ==========================================================
-  // LOADING / ERROR
-  // ==========================================================
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-
-
-  // ==========================================================
-  // DASHBOARD DATA
-  // ==========================================================
+  const [clearingMessages, setClearingMessages] = useState(false);
 
   const [stats, setStats] = useState({
     totalSongs: 0,
@@ -124,6 +106,7 @@ const AdminDashboard = () => {
     totalLikes: 0,
     totalPlaylists: 0,
     totalArtists: 0,
+    totalMessages: 0,
   });
 
   const [songs, setSongs] = useState([]);
@@ -131,18 +114,10 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [likesActivity, setLikesActivity] = useState([]);
   const [playlists, setPlaylists] = useState([]);
-
-
-  // ==========================================================
-  // SEARCH
-  // ==========================================================
+  const [messages, setMessages] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const [searchTerm, setSearchTerm] = useState('');
-
-
-  // ==========================================================
-  // SONG MODAL
-  // ==========================================================
 
   const [showSongModal, setShowSongModal] = useState(false);
   const [editingSong, setEditingSong] = useState(null);
@@ -155,11 +130,6 @@ const AdminDashboard = () => {
     artistIds: [],
   });
 
-
-  // ==========================================================
-  // ARTIST MODAL
-  // ==========================================================
-
   const [showArtistModal, setShowArtistModal] = useState(false);
   const [editingArtist, setEditingArtist] = useState(null);
 
@@ -171,21 +141,11 @@ const AdminDashboard = () => {
   const [savingArtist, setSavingArtist] = useState(false);
   const [deletingArtistId, setDeletingArtistId] = useState(null);
 
-
-  // ==========================================================
-  // ARTIST SONGS INSPECTOR MODAL & DUPLICATES
-  // ==========================================================
-
   const [showArtistSongsModal, setShowArtistSongsModal] = useState(false);
   const [selectedArtistForSongs, setSelectedArtistForSongs] = useState(null);
   const [artistSongsList, setArtistSongsList] = useState([]);
   const [loadingArtistSongs, setLoadingArtistSongs] = useState(false);
   const [deletingModalSongId, setDeletingModalSongId] = useState(null);
-
-
-  // ==========================================================
-  // USER INSPECTOR & PREMIUM STATE
-  // ==========================================================
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
@@ -193,25 +153,13 @@ const AdminDashboard = () => {
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [updatingPremiumUserId, setUpdatingPremiumUserId] = useState(null);
 
-
-  // ==========================================================
-  // PLAYLIST INSPECTOR
-  // ==========================================================
-
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [updatingPlaylistId, setUpdatingPlaylistId] = useState(null);
 
-
-  // ==========================================================
-  // NORMALIZATION HELPERS
-  // ==========================================================
-
   const normalizeId = (value) => {
-    if (value === null || value === undefined) {
-      return '';
-    }
+    if (value === null || value === undefined) return '';
     return String(value).trim().toLowerCase();
   };
 
@@ -264,11 +212,6 @@ const AdminDashboard = () => {
     );
   };
 
-
-  // ==========================================================
-  // SONG ARTIST HELPERS
-  // ==========================================================
-
   const getSongArtists = (song) => {
     if (!song) return [];
     if (Array.isArray(song.artists)) return song.artists;
@@ -310,11 +253,6 @@ const AdminDashboard = () => {
     return [];
   };
 
-
-  // ==========================================================
-  // CREATOR / PLAYLIST HELPERS
-  // ==========================================================
-
   const getCreatorName = (playlist) => {
     if (!playlist) return 'Unknown';
     return (
@@ -342,11 +280,6 @@ const AdminDashboard = () => {
     if (Array.isArray(playlist.playlist_songs)) return playlist.playlist_songs;
     return [];
   };
-
-
-  // ==========================================================
-  // USER ONLINE / LAST SEEN LOGIC
-  // ==========================================================
 
   const getUserLastSeen = (user) => {
     if (!user) return null;
@@ -394,11 +327,6 @@ const AdminDashboard = () => {
     return formatDateIST(value);
   };
 
-
-  // ==========================================================
-  // FETCH ADMIN DATA
-  // ==========================================================
-
   const fetchAdminData = useCallback(
     async (isRefresh = false) => {
       try {
@@ -417,6 +345,7 @@ const AdminDashboard = () => {
           api.get('/playlists/admin/all'),
           api.get('/admin/likes-activity'),
           api.get('/artists'),
+          api.get('/contact/admin/messages'),
         ]);
 
         const [
@@ -426,12 +355,14 @@ const AdminDashboard = () => {
           playlistsResult,
           likesResult,
           artistsResult,
+          messagesResult,
         ] = results;
 
         if (statsResult.status === 'fulfilled') {
           const data = statsResult.value?.data;
 
-          setStats({
+          setStats((prev) => ({
+            ...prev,
             totalSongs: Number(
               data?.totalSongs ?? data?.stats?.totalSongs ?? data?.songs ?? 0
             ),
@@ -447,7 +378,7 @@ const AdminDashboard = () => {
             totalArtists: Number(
               data?.totalArtists ?? data?.stats?.totalArtists ?? data?.artists ?? 0
             ),
-          });
+          }));
         }
 
         if (songsResult.status === 'fulfilled') {
@@ -522,6 +453,17 @@ const AdminDashboard = () => {
         } else {
           setArtists([]);
         }
+
+        if (messagesResult.status === 'fulfilled') {
+          const mData = messagesResult.value?.data;
+          const msgList = mData?.messages || (Array.isArray(mData) ? mData : []);
+          setMessages(msgList);
+          setUnreadCount(Number(mData?.unreadCount ?? msgList.filter((m) => !m.isRead).length));
+          setStats((prev) => ({
+            ...prev,
+            totalMessages: msgList.length,
+          }));
+        }
       } catch (err) {
         console.error('Admin dashboard loading error:', err);
         setError(
@@ -537,19 +479,9 @@ const AdminDashboard = () => {
     []
   );
 
-
-  // ==========================================================
-  // INITIAL LOAD
-  // ==========================================================
-
   useEffect(() => {
     fetchAdminData(true);
   }, [fetchAdminData]);
-
-
-  // ==========================================================
-  // LIVE USER ACTIVITY REFRESH
-  // ==========================================================
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -561,11 +493,6 @@ const AdminDashboard = () => {
     };
   }, [fetchAdminData]);
 
-
-  // ==========================================================
-  // LIVE CLOCK REFRESH
-  // ==========================================================
-
   const [, setCurrentTime] = useState(Date.now());
 
   useEffect(() => {
@@ -576,10 +503,48 @@ const AdminDashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleMarkMessageRead = async (messageId) => {
+    try {
+      await api.put(`/contact/admin/messages/${messageId}/read`);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId || msg.id === messageId
+            ? { ...msg, isRead: true }
+            : msg
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('Failed to mark message as read:', err);
+      alert('Failed to update message status.');
+    }
+  };
 
-  // ==========================================================
-  // FILTERED DATA
-  // ==========================================================
+  // CLEAR ALL MESSAGES HANDLER
+  const handleClearAllMessages = async () => {
+    if (messages.length === 0) return;
+
+    const confirmed = window.confirm(
+      'Are you sure you want to permanently clear all messages? This cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setClearingMessages(true);
+      await api.delete('/contact/admin/messages/clear');
+      setMessages([]);
+      setUnreadCount(0);
+      setStats((prev) => ({
+        ...prev,
+        totalMessages: 0,
+      }));
+    } catch (err) {
+      console.error('Failed to clear messages:', err);
+      alert(err?.response?.data?.message || 'Failed to clear messages.');
+    } finally {
+      setClearingMessages(false);
+    }
+  };
 
   const filteredSongs = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -672,6 +637,25 @@ const AdminDashboard = () => {
     });
   }, [playlists, searchTerm]);
 
+  const filteredMessages = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return messages;
+
+    return messages.filter((msg) => {
+      const name = msg.name || '';
+      const email = msg.email || '';
+      const phone = msg.phone || '';
+      const text = msg.message || '';
+
+      return (
+        name.toLowerCase().includes(query) ||
+        email.toLowerCase().includes(query) ||
+        phone.toLowerCase().includes(query) ||
+        text.toLowerCase().includes(query)
+      );
+    });
+  }, [messages, searchTerm]);
+
   const filteredSongArtists = useMemo(() => {
     const query = artistSearch.trim().toLowerCase();
     const selectedIds = formData.artistIds.map(normalizeId);
@@ -697,11 +681,6 @@ const AdminDashboard = () => {
       .filter(Boolean);
   }, [artists, formData.artistIds]);
 
-
-  // ==========================================================
-  // DUPLICATE HELPER (TITLE MATCHING)
-  // ==========================================================
-
   const duplicateTitleSet = useMemo(() => {
     const counts = {};
     artistSongsList.forEach((song) => {
@@ -719,10 +698,22 @@ const AdminDashboard = () => {
     return duplicates;
   }, [artistSongsList]);
 
-
-  // ==========================================================
-  // SONG MODAL
-  // ==========================================================
+  const tabs = useMemo(
+    () => [
+      { id: 'songs', label: 'Songs', icon: Music2 },
+      { id: 'artists', label: 'Artists', icon: Mic2 },
+      { id: 'likes', label: 'Likes', icon: Heart },
+      { id: 'users', label: 'Users', icon: Users },
+      { id: 'playlists', label: 'Playlists', icon: ListMusic },
+      {
+        id: 'messages',
+        label: 'Messages',
+        icon: MessageSquare,
+        badge: unreadCount,
+      },
+    ],
+    [unreadCount]
+  );
 
   const handleOpenAddSongModal = () => {
     setEditingSong(null);
@@ -782,11 +773,6 @@ const AdminDashboard = () => {
     }));
   };
 
-
-  // ==========================================================
-  // SAVE SONG
-  // ==========================================================
-
   const handleSaveSong = async (e) => {
     e.preventDefault();
 
@@ -820,11 +806,6 @@ const AdminDashboard = () => {
     }
   };
 
-
-  // ==========================================================
-  // DELETE SONG (GLOBAL)
-  // ==========================================================
-
   const handleDeleteSong = async (songId) => {
     if (!songId) return;
 
@@ -841,11 +822,6 @@ const AdminDashboard = () => {
       alert(err?.response?.data?.message || 'Failed to delete song.');
     }
   };
-
-
-  // ==========================================================
-  // ARTIST SONGS VIEWER & MODAL DUPLICATE REMOVAL
-  // ==========================================================
 
   const handleOpenArtistSongs = async (artist) => {
     const artistId = getArtistId(artist);
@@ -927,11 +903,6 @@ const AdminDashboard = () => {
     setDeletingModalSongId(null);
   };
 
-
-  // ==========================================================
-  // ARTIST MODAL
-  // ==========================================================
-
   const handleOpenAddArtistModal = () => {
     setEditingArtist(null);
     setArtistFormData({ name: '', imageUrl: '' });
@@ -946,11 +917,6 @@ const AdminDashboard = () => {
     });
     setShowArtistModal(true);
   };
-
-
-  // ==========================================================
-  // SAVE ARTIST
-  // ==========================================================
 
   const handleSaveArtist = async (e) => {
     e.preventDefault();
@@ -984,11 +950,6 @@ const AdminDashboard = () => {
     }
   };
 
-
-  // ==========================================================
-  // DELETE ARTIST
-  // ==========================================================
-
   const handleDeleteArtist = async (artist) => {
     const artistId = getArtistId(artist);
     if (!artistId) return;
@@ -1011,11 +972,6 @@ const AdminDashboard = () => {
     }
   };
 
-
-  // ==========================================================
-  // USER INSPECTOR
-  // ==========================================================
-
   const handleInspectUser = async (userId) => {
     if (!userId) return;
 
@@ -1034,11 +990,6 @@ const AdminDashboard = () => {
       setLoadingUserDetail(false);
     }
   };
-
-
-  // ==========================================================
-  // FACKIFY PREMIUM APPROVAL / TOGGLE
-  // ==========================================================
 
   const handleTogglePremium = async (user) => {
     if (!user?.id) return;
@@ -1064,7 +1015,6 @@ const AdminDashboard = () => {
         });
       });
 
-      // Optimistically update local users state and clear pending request
       setUsers((prevUsers) =>
         prevUsers.map((u) =>
           u.id === user.id
@@ -1078,7 +1028,6 @@ const AdminDashboard = () => {
         )
       );
 
-      // Update inspector detail if currently open
       setSelectedUserDetail((prev) => {
         if (!prev?.user || prev.user.id !== user.id) return prev;
         return {
@@ -1101,11 +1050,6 @@ const AdminDashboard = () => {
     }
   };
 
-
-  // ==========================================================
-  // TOGGLE USER ROLE
-  // ==========================================================
-
   const handleToggleUserRole = async (userId, currentRole) => {
     if (!userId) return;
 
@@ -1121,11 +1065,6 @@ const AdminDashboard = () => {
       alert(err?.response?.data?.message || 'Failed to update user role.');
     }
   };
-
-
-  // ==========================================================
-  // DELETE USER
-  // ==========================================================
 
   const handleDeleteUser = async (user) => {
     if (!user?.id) return;
@@ -1146,11 +1085,6 @@ const AdminDashboard = () => {
       setDeletingUserId(null);
     }
   };
-
-
-  // ==========================================================
-  // PLAYLIST INSPECTOR
-  // ==========================================================
 
   const handleOpenPlaylist = async (playlist) => {
     if (!playlist?.id) return;
@@ -1176,11 +1110,6 @@ const AdminDashboard = () => {
     setSelectedPlaylist(null);
     setLoadingPlaylist(false);
   };
-
-
-  // ==========================================================
-  // TOGGLE PLAYLIST VISIBILITY
-  // ==========================================================
 
   const handleTogglePlaylistVisibility = async (playlist) => {
     if (!playlist?.id) return;
@@ -1217,11 +1146,6 @@ const AdminDashboard = () => {
     }
   };
 
-
-  // ==========================================================
-  // STATS
-  // ==========================================================
-
   const onlineUsers = useMemo(
     () => users.filter((user) => getUserOnlineStatus(user)).length,
     [users]
@@ -1237,59 +1161,33 @@ const AdminDashboard = () => {
     (playlist) => Boolean(playlist.is_public)
   ).length;
 
-
-  // ==========================================================
-  // RENDER
-  // ==========================================================
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6">
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
       <div className="max-w-7xl mx-auto">
-
+        {/* HEADER */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-
           <div>
             <div className="flex items-center gap-2">
-
               <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                 <Shield className="w-5 h-5 text-amber-400" />
               </div>
-
               <div>
                 <h1 className="text-xl sm:text-2xl font-black text-slate-100">
                   Admin Dashboard
                 </h1>
-
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Manage songs, artists, users, subscriptions, likes and playlists.
+                  Manage songs, artists, users, subscriptions, likes, playlists, and user support inquiries.
                 </p>
               </div>
-
             </div>
           </div>
 
-
           <div className="flex items-center gap-2">
-
             <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800">
-
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
-
-              <span className="text-[10px] text-slate-400">
-                Live Users
-              </span>
-
-              <span className="text-xs font-bold text-emerald-400">
-                {onlineUsers}
-              </span>
-
+              <span className="text-[10px] text-slate-400">Live Users</span>
+              <span className="text-xs font-bold text-emerald-400">{onlineUsers}</span>
             </div>
-
 
             <button
               type="button"
@@ -1297,48 +1195,25 @@ const AdminDashboard = () => {
               disabled={refreshing}
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  refreshing ? 'animate-spin' : ''
-                }`}
-              />
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-
           </div>
-
         </div>
 
-
-        {/* ====================================================
-            ERROR
-        ==================================================== */}
-
+        {/* ERROR */}
         {error && (
           <div className="mb-5 flex items-start gap-3 bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
-
             <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-
             <div>
-              <p className="text-xs font-bold text-rose-300">
-                Dashboard Error
-              </p>
-
-              <p className="text-[11px] text-rose-400/80 mt-1">
-                {error}
-              </p>
+              <p className="text-xs font-bold text-rose-300">Dashboard Error</p>
+              <p className="text-[11px] text-rose-400/80 mt-1">{error}</p>
             </div>
-
           </div>
         )}
 
-
-        {/* ====================================================
-            STATS
-        ==================================================== */}
-
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-
+        {/* STATS */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {[
             {
               label: 'Songs',
@@ -1375,21 +1250,24 @@ const AdminDashboard = () => {
               color: 'text-violet-400',
               bg: 'bg-violet-500/10',
             },
+            {
+              label: 'Inquiries',
+              value: unreadCount > 0 ? `${unreadCount} new` : stats.totalMessages,
+              icon: MessageSquare,
+              color: unreadCount > 0 ? 'text-rose-400' : 'text-emerald-400',
+              bg: unreadCount > 0 ? 'bg-rose-500/10' : 'bg-emerald-500/10',
+            },
           ].map((item) => {
             const Icon = item.icon;
-
             return (
               <div
                 key={item.label}
                 className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4"
               >
-
                 <div className="flex items-center justify-between">
-
                   <div className={`p-2 rounded-xl ${item.bg}`}>
                     <Icon className={`w-4 h-4 ${item.color}`} />
                   </div>
-
                 </div>
 
                 <p className="text-[9px] uppercase tracking-wider text-slate-600 font-bold mt-3">
@@ -1399,24 +1277,15 @@ const AdminDashboard = () => {
                 <p className="text-xl font-black text-slate-100 mt-0.5">
                   {item.value}
                 </p>
-
               </div>
             );
           })}
-
         </div>
 
-
-        {/* ====================================================
-            TABS + SEARCH
-        ==================================================== */}
-
+        {/* TABS + SEARCH */}
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-2 mb-5">
-
           <div className="flex flex-col lg:flex-row gap-2">
-
             <div className="flex items-center gap-1 overflow-x-auto">
-
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.id;
@@ -1429,25 +1298,26 @@ const AdminDashboard = () => {
                       setActiveTab(tab.id);
                       setSearchTerm('');
                     }}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                    className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                       active
                         ? 'bg-amber-500 text-slate-950'
                         : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
-                    {tab.label}
+                    <span>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span className="ml-1 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full">
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
-
             </div>
 
-
             <div className="relative flex-1 min-w-0">
-
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
-
               <input
                 type="text"
                 value={searchTerm}
@@ -1455,58 +1325,35 @@ const AdminDashboard = () => {
                 placeholder={`Search ${activeTab}...`}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
               />
-
             </div>
-
           </div>
-
         </div>
 
-
-        {/* ====================================================
-            LOADING
-        ==================================================== */}
-
+        {/* LOADING */}
         {loading && !refreshing ? (
-
           <div className="py-20 flex flex-col items-center justify-center">
-
             <RefreshCw className="w-7 h-7 text-amber-400 animate-spin mb-3" />
-
             <p className="text-sm font-semibold text-slate-300">
               Loading admin dashboard...
             </p>
-
             <p className="text-xs text-slate-600 mt-1">
               Fetching latest records.
             </p>
-
           </div>
-
         ) : (
-
           <>
-
-
-            {/* ==================================================
-                SONGS TAB
-            ================================================== */}
-
+            {/* SONGS TAB */}
             {activeTab === 'songs' && (
               <div className="space-y-4">
-
                 <div className="flex items-center justify-between">
-
                   <div>
                     <h2 className="text-base font-bold text-slate-100">
                       Song Management
                     </h2>
-
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       Manage all uploaded tracks and artist relationships.
                     </p>
                   </div>
-
                   <button
                     type="button"
                     onClick={handleOpenAddSongModal}
@@ -1515,71 +1362,42 @@ const AdminDashboard = () => {
                     <Plus className="w-3.5 h-3.5" />
                     Add Song
                   </button>
-
                 </div>
 
-
                 {filteredSongs.length === 0 ? (
-
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl py-16 text-center">
-
                     <Music2 className="w-8 h-8 mx-auto text-slate-700 mb-3" />
-
-                    <h3 className="text-sm font-semibold text-slate-300">
-                      No songs found
-                    </h3>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Upload your first track to get started.
-                    </p>
-
+                    <h3 className="text-sm font-semibold text-slate-300">No songs found</h3>
+                    <p className="text-xs text-slate-500 mt-1">Upload your first track to get started.</p>
                   </div>
-
                 ) : (
-
                   <div className="space-y-2">
-
                     {filteredSongs.map((song, index) => {
                       const songId = song.id || song._id;
-
                       return (
                         <div
                           key={songId || `${song.title}-${index}`}
                           className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-3 sm:p-4 transition"
                         >
-
                           <div className="flex items-center gap-3">
-
                             <img
-                              src={
-                                song.thumbnail_url ||
-                                song.thumbnailUrl ||
-                                defaultThumbnail
-                              }
+                              src={song.thumbnail_url || song.thumbnailUrl || defaultThumbnail}
                               alt=""
                               className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-800 shrink-0"
                             />
-
-
                             <div className="min-w-0 flex-1">
-
                               <h3 className="text-sm font-bold text-slate-100 truncate">
                                 {song.title || 'Untitled Song'}
                               </h3>
-
                               <p className="text-[11px] text-slate-400 truncate mt-1">
                                 {getSongArtistNames(song).join(', ') || 'Unknown Artist'}
                               </p>
-
                               <p className="text-[9px] text-slate-600 truncate mt-1">
                                 {song.source_url || song.sourceUrl || 'No source'}
                               </p>
-
                             </div>
 
-
                             <div className="hidden md:flex items-center gap-1.5">
-
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(song)}
@@ -1588,7 +1406,6 @@ const AdminDashboard = () => {
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSong(songId)}
@@ -1597,93 +1414,59 @@ const AdminDashboard = () => {
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-
                             </div>
-
                           </div>
 
-
                           <div className="flex md:hidden items-center justify-end gap-2 mt-3">
-
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(song)}
                               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-[10px] font-semibold cursor-pointer"
                             >
-                              <Edit2 className="w-3 h-3" />
-                              Edit
+                              <Edit2 className="w-3 h-3" /> Edit
                             </button>
-
                             <button
                               type="button"
                               onClick={() => handleDeleteSong(songId)}
                               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 text-rose-400 text-[10px] font-semibold cursor-pointer"
                             >
-                              <Trash2 className="w-3 h-3" />
-                              Delete
+                              <Trash2 className="w-3 h-3" /> Delete
                             </button>
-
                           </div>
-
                         </div>
                       );
                     })}
-
                   </div>
-
                 )}
-
               </div>
             )}
 
-
-            {/* ==================================================
-                ARTISTS TAB
-            ================================================== */}
-
+            {/* ARTISTS TAB */}
             {activeTab === 'artists' && (
               <div className="space-y-4">
-
                 <div className="flex items-center justify-between">
-
                   <div>
-                    <h2 className="text-base font-bold text-slate-100">
-                      Artist Management
-                    </h2>
-
+                    <h2 className="text-base font-bold text-slate-100">Artist Management</h2>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       Manage artists, inspect their songs, and clean up duplicate tracks.
                     </p>
                   </div>
-
                   <button
                     type="button"
                     onClick={handleOpenAddArtistModal}
                     className="flex items-center gap-2 px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Artist
+                    <Plus className="w-3.5 h-3.5" /> Add Artist
                   </button>
-
                 </div>
 
-
                 {filteredArtists.length === 0 ? (
-
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl py-16 text-center">
-
                     <Mic2 className="w-8 h-8 mx-auto text-slate-700 mb-3" />
-
-                    <h3 className="text-sm font-semibold text-slate-300">
-                      No artists found
-                    </h3>
-
+                    <h3 className="text-sm font-semibold text-slate-300">No artists found</h3>
                   </div>
-
                 ) : (
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-
                     {filteredArtists.map((artist) => {
                       const artistId = getArtistId(artist);
                       const songCount = Number(
@@ -1693,19 +1476,15 @@ const AdminDashboard = () => {
                         artist.songCount ??
                         0
                       );
-
-                      const deleting =
-                        normalizeId(deletingArtistId) === normalizeId(artistId);
+                      const deleting = normalizeId(deletingArtistId) === normalizeId(artistId);
 
                       return (
                         <div
                           key={normalizeId(artistId)}
                           className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition flex flex-col justify-between"
                         >
-
                           <div>
                             <div className="flex items-center gap-3">
-
                               <img
                                 src={getArtistImage(artist)}
                                 alt=""
@@ -1714,46 +1493,32 @@ const AdminDashboard = () => {
                                   e.currentTarget.src = defaultArtistImage;
                                 }}
                               />
-
                               <div className="min-w-0 flex-1">
-
                                 <h3 className="font-bold text-slate-100 truncate">
                                   {getArtistName(artist)}
                                 </h3>
-
-                                <p className="text-[10px] text-slate-500 mt-1">
-                                  {songCount} songs
-                                </p>
-
+                                <p className="text-[10px] text-slate-500 mt-1">{songCount} songs</p>
                               </div>
-
                             </div>
                           </div>
 
-
                           <div className="space-y-2 mt-4">
-
-                            {/* VIEW ALL SONGS BUTTON */}
                             <button
                               type="button"
                               onClick={() => handleOpenArtistSongs(artist)}
                               className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-xs font-bold transition cursor-pointer"
                             >
-                              <ListMusic className="w-3.5 h-3.5" />
-                              All Songs & Clean Duplicates
+                              <ListMusic className="w-3.5 h-3.5" /> All Songs & Clean Duplicates
                             </button>
 
                             <div className="flex items-center gap-2">
-
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditArtistModal(artist)}
                                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold cursor-pointer"
                               >
-                                <Edit2 className="w-3 h-3" />
-                                Edit
+                                <Edit2 className="w-3 h-3" /> Edit
                               </button>
-
                               <button
                                 type="button"
                                 disabled={deleting}
@@ -1761,248 +1526,128 @@ const AdminDashboard = () => {
                                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
                               >
                                 {deleting ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                 ) : (
-                                  <Trash2 className="w-3 h-3" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 )}
                                 Delete
                               </button>
-
                             </div>
-
                           </div>
-
                         </div>
                       );
                     })}
-
                   </div>
-
                 )}
-
               </div>
             )}
 
-
-            {/* ==================================================
-                LIKES TAB
-            ================================================== */}
-
+            {/* LIKES TAB */}
             {activeTab === 'likes' && (
               <div className="space-y-4">
-
                 <div className="bg-gradient-to-r from-rose-500/10 to-slate-900 border border-rose-500/10 rounded-2xl p-5">
-
                   <div className="flex items-center gap-3">
-
                     <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl">
                       <Heart className="w-5 h-5 text-rose-400 fill-current" />
                     </div>
-
                     <div>
-                      <h2 className="text-base font-bold text-slate-100">
-                        Likes Activity
-                      </h2>
-
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Monitor user song likes and activity.
-                      </p>
+                      <h2 className="text-base font-bold text-slate-100">Likes Activity</h2>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Monitor user song likes and activity.</p>
                     </div>
-
                   </div>
-
                 </div>
 
-
                 {filteredLikes.length === 0 ? (
-
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl py-16 text-center">
-
                     <Heart className="w-8 h-8 mx-auto text-slate-700 mb-3" />
-
-                    <h3 className="text-sm font-semibold text-slate-300">
-                      No likes activity found
-                    </h3>
-
+                    <h3 className="text-sm font-semibold text-slate-300">No likes activity found</h3>
                   </div>
-
                 ) : (
-
                   <div className="space-y-2">
-
                     {filteredLikes.map((like, index) => {
-                      const username =
-                        like.username ||
-                        like.user_username ||
-                        like.user?.username ||
-                        'Unknown User';
-
-                      const title =
-                        like.title ||
-                        like.song_title ||
-                        like.song?.title ||
-                        'Unknown Song';
-
-                      const artist =
-                        like.artist ||
-                        like.artist_name ||
-                        like.song?.artist ||
-                        'Unknown Artist';
-
-                      const thumbnail =
-                        like.thumbnail_url ||
-                        like.song?.thumbnail_url ||
-                        defaultThumbnail;
-
-                      const likedAt =
-                        like.liked_at ||
-                        like.created_at ||
-                        like.createdAt;
+                      const username = like.username || like.user_username || like.user?.username || 'Unknown User';
+                      const title = like.title || like.song_title || like.song?.title || 'Unknown Song';
+                      const artist = like.artist || like.artist_name || like.song?.artist || 'Unknown Artist';
+                      const thumbnail = like.thumbnail_url || like.song?.thumbnail_url || defaultThumbnail;
+                      const likedAt = like.liked_at || like.created_at || like.createdAt;
 
                       return (
                         <div
                           key={like.id || `${username}-${title}-${index}`}
                           className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center gap-3"
                         >
-
-                          <img
-                            src={thumbnail}
-                            alt=""
-                            className="w-10 h-10 rounded-lg object-cover shrink-0"
-                          />
-
+                          <img src={thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                           <div className="min-w-0 flex-1">
-
-                            <p className="text-xs font-semibold text-slate-100 truncate">
-                              {title}
-                            </p>
-
-                            <p className="text-[10px] text-slate-500 truncate mt-0.5">
-                              {artist}
-                            </p>
-
-                            <p className="text-[9px] text-sky-400 mt-1">
-                              @{username}
-                            </p>
-
+                            <p className="text-xs font-semibold text-slate-100 truncate">{title}</p>
+                            <p className="text-[10px] text-slate-500 truncate mt-0.5">{artist}</p>
+                            <p className="text-[9px] text-sky-400 mt-1">@{username}</p>
                           </div>
-
                           <div className="text-right shrink-0">
-
                             <Heart className="w-3.5 h-3.5 text-rose-400 fill-current ml-auto" />
-
-                            <p className="text-[9px] text-slate-600 mt-1">
-                              {likedAt ? formatDateIST(likedAt) : ''}
-                            </p>
-
+                            <p className="text-[9px] text-slate-600 mt-1">{likedAt ? formatDateIST(likedAt) : ''}</p>
                           </div>
-
                         </div>
                       );
                     })}
-
                   </div>
-
                 )}
-
               </div>
             )}
 
-
-            {/* ==================================================
-                USERS TAB
-            ================================================== */}
-
+            {/* USERS TAB */}
             {activeTab === 'users' && (
               <div className="space-y-4">
-
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-
                   <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2">
                       <Activity className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
-                        Online
-                      </span>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">Online</span>
                     </div>
-                    <p className="text-xl font-black text-emerald-400 mt-2">
-                      {onlineUsers}
-                    </p>
+                    <p className="text-xl font-black text-emerald-400 mt-2">{onlineUsers}</p>
                   </div>
-
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-slate-500" />
-                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
-                        Offline
-                      </span>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">Offline</span>
                     </div>
-                    <p className="text-xl font-black text-slate-300 mt-2">
-                      {offlineUsers}
-                    </p>
+                    <p className="text-xl font-black text-slate-300 mt-2">{offlineUsers}</p>
                   </div>
-
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-sky-400" />
-                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
-                        Total
-                      </span>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">Total</span>
                     </div>
-                    <p className="text-xl font-black text-slate-100 mt-2">
-                      {users.length}
-                    </p>
+                    <p className="text-xl font-black text-slate-100 mt-2">{users.length}</p>
                   </div>
-
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2">
                       <Crown className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
-                        Premium
-                      </span>
+                      <span className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">Premium</span>
                     </div>
                     <p className="text-xl font-black text-emerald-400 mt-2">
                       {users.filter((user) => isUserPremium(user)).length}
                     </p>
                   </div>
-
                 </div>
 
-
                 <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
-
                   <div className="p-4 border-b border-slate-800">
-
-                    <h2 className="text-base font-bold text-slate-100">
-                      User Activity & Membership
-                    </h2>
-
+                    <h2 className="text-base font-bold text-slate-100">User Activity & Membership</h2>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       Live online/offline status, account roles, and Fackify Premium approvals.
                     </p>
-
                   </div>
 
-
                   {filteredUsers.length === 0 ? (
-
                     <div className="py-16 text-center">
-
                       <Users className="w-8 h-8 mx-auto text-slate-700 mb-3" />
-
-                      <h3 className="text-sm font-semibold text-slate-300">
-                        No users found
-                      </h3>
-
+                      <h3 className="text-sm font-semibold text-slate-300">No users found</h3>
                     </div>
-
                   ) : (
-
                     <div className="divide-y divide-slate-800">
-
                       {filteredUsers.map((user) => {
                         const online = getUserOnlineStatus(user);
                         const lastSeen = getUserLastSeen(user);
@@ -2014,18 +1659,10 @@ const AdminDashboard = () => {
                         const avatar = getUserAvatar(user);
 
                         return (
-                          <div
-                            key={user.id}
-                            className="p-4 hover:bg-slate-950/50 transition"
-                          >
-
+                          <div key={user.id} className="p-4 hover:bg-slate-950/50 transition">
                             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-
                               <div className="flex items-center gap-3 min-w-0 flex-1">
-
-                                {/* USER AVATAR WITH GOOGLE PICTURE SUPPORT */}
                                 <div className="relative shrink-0">
-
                                   <div className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center">
                                     {avatar ? (
                                       <img
@@ -2044,41 +1681,28 @@ const AdminDashboard = () => {
                                       <User className="w-5 h-5 text-slate-400" />
                                     )}
                                   </div>
-
                                   <span
                                     className={`absolute -right-0.5 -bottom-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-900 ${
                                       online ? 'bg-emerald-400' : 'bg-slate-600'
                                     }`}
                                   />
-
                                 </div>
 
-
                                 <div className="min-w-0">
-
                                   <div className="flex items-center gap-2 flex-wrap">
-
                                     <p className="text-sm font-bold text-slate-100 truncate">
                                       @{user.username || 'Unknown'}
                                     </p>
-
-                                    {/* PENDING APPROVAL REQUEST BADGE (NON-ADMINS ONLY) */}
                                     {!isAdmin && isRequested && !premium && (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-black uppercase tracking-wider animate-pulse">
-                                        <Clock className="w-2.5 h-2.5" />
-                                        Request Pending
+                                        <Clock className="w-2.5 h-2.5" /> Request Pending
                                       </span>
                                     )}
-
-                                    {/* PREMIUM ACTIVE BADGE */}
                                     {premium && (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
-                                        <Sparkles className="w-2.5 h-2.5" />
-                                        Fackify Premium
+                                        <Sparkles className="w-2.5 h-2.5" /> Fackify Premium
                                       </span>
                                     )}
-
-                                    {/* STATUS BADGE */}
                                     <div
                                       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold ${
                                         online
@@ -2088,33 +1712,23 @@ const AdminDashboard = () => {
                                     >
                                       <span
                                         className={`w-1.5 h-1.5 rounded-full ${
-                                          online
-                                            ? 'bg-emerald-400 animate-pulse'
-                                            : 'bg-slate-600'
+                                          online ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'
                                         }`}
                                       />
                                       {online ? 'Online' : 'Offline'}
                                     </div>
-
                                   </div>
-
                                   <p className="text-[10px] text-slate-500 truncate mt-1">
                                     {user.email || 'No email'}
                                   </p>
-
                                 </div>
-
                               </div>
 
-
                               <div className="flex flex-wrap items-center gap-2">
-
                                 <div className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
-
                                   <p className="text-[8px] uppercase tracking-wider text-slate-600 font-bold">
                                     Last seen
                                   </p>
-
                                   <p
                                     className={`text-[10px] font-semibold mt-0.5 ${
                                       online ? 'text-emerald-400' : 'text-slate-400'
@@ -2122,9 +1736,7 @@ const AdminDashboard = () => {
                                   >
                                     {online ? 'Active now' : formatLastSeen(lastSeen)}
                                   </p>
-
                                 </div>
-
 
                                 <span
                                   className={`px-2.5 py-1.5 rounded-lg border text-[9px] font-bold ${
@@ -2136,8 +1748,6 @@ const AdminDashboard = () => {
                                   {user.role || 'user'}
                                 </span>
 
-
-                                {/* FACKIFY PREMIUM APPROVE / REVOKE BUTTON (ONLY FOR REGULAR USERS) */}
                                 {!isAdmin && (
                                   <button
                                     type="button"
@@ -2150,13 +1760,6 @@ const AdminDashboard = () => {
                                         ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg ring-2 ring-amber-400/50 animate-pulse'
                                         : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                                     }`}
-                                    title={
-                                      premium
-                                        ? 'Revoke Fackify Premium'
-                                        : isRequested
-                                        ? 'Approve Pending Fackify Premium Request'
-                                        : 'Grant Fackify Premium'
-                                    }
                                   >
                                     {updatingPremium ? (
                                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -2179,7 +1782,6 @@ const AdminDashboard = () => {
                                   </button>
                                 )}
 
-
                                 <button
                                   type="button"
                                   onClick={() => handleInspectUser(user.id)}
@@ -2189,7 +1791,6 @@ const AdminDashboard = () => {
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
 
-
                                 <button
                                   type="button"
                                   onClick={() => handleToggleUserRole(user.id, user.role)}
@@ -2198,7 +1799,6 @@ const AdminDashboard = () => {
                                 >
                                   <Shield className="w-3.5 h-3.5" />
                                 </button>
-
 
                                 <button
                                   type="button"
@@ -2213,128 +1813,61 @@ const AdminDashboard = () => {
                                     <Trash2 className="w-3.5 h-3.5" />
                                   )}
                                 </button>
-
                               </div>
-
                             </div>
-
                           </div>
                         );
                       })}
-
                     </div>
-
                   )}
-
                 </div>
-
               </div>
             )}
 
-
-            {/* ==================================================
-                PLAYLIST MODERATION TAB
-            ================================================== */}
-
+            {/* PLAYLIST MODERATION TAB */}
             {activeTab === 'playlists' && (
               <div className="space-y-4">
-
                 <div className="bg-gradient-to-r from-slate-900 to-slate-900/60 border border-slate-800 rounded-2xl p-5">
-
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-
                     <div className="flex items-center gap-2">
-
                       <div className="p-2 bg-teal-500/10 border border-teal-500/20 rounded-xl">
                         <ListMusic className="w-5 h-5 text-teal-400" />
                       </div>
-
                       <div>
-
-                        <h2 className="text-base font-bold text-slate-100">
-                          Playlist Moderation
-                        </h2>
-
+                        <h2 className="text-base font-bold text-slate-100">Playlist Moderation</h2>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           Review user-created playlists before making them public.
                         </p>
-
                       </div>
-
                     </div>
-
 
                     <div className="flex items-center gap-2">
-
                       <div className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
-
-                        <span className="text-[10px] text-slate-500">
-                          Total
-                        </span>
-
-                        <span className="ml-2 text-xs font-bold text-slate-200">
-                          {playlists.length}
-                        </span>
-
+                        <span className="text-[10px] text-slate-500">Total</span>
+                        <span className="ml-2 text-xs font-bold text-slate-200">{playlists.length}</span>
                       </div>
-
-
                       <div className="px-3 py-2 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
-
-                        <span className="text-[10px] text-emerald-500/70">
-                          Public
-                        </span>
-
-                        <span className="ml-2 text-xs font-bold text-emerald-400">
-                          {publicPlaylists}
-                        </span>
-
+                        <span className="text-[10px] text-emerald-500/70">Public</span>
+                        <span className="ml-2 text-xs font-bold text-emerald-400">{publicPlaylists}</span>
                       </div>
-
-
                       <div className="px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20">
-
-                        <span className="text-[10px] text-amber-500/70">
-                          Pending
-                        </span>
-
-                        <span className="ml-2 text-xs font-bold text-amber-400">
-                          {pendingPlaylists}
-                        </span>
-
+                        <span className="text-[10px] text-amber-500/70">Pending</span>
+                        <span className="ml-2 text-xs font-bold text-amber-400">{pendingPlaylists}</span>
                       </div>
-
                     </div>
-
                   </div>
-
                 </div>
 
-
                 {filteredPlaylists.length === 0 ? (
-
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl py-16 text-center">
-
                     <div className="w-14 h-14 mx-auto bg-slate-800/60 rounded-2xl flex items-center justify-center mb-3">
-
                       <ListMusic className="w-7 h-7 text-slate-600" />
-
                     </div>
-
-                    <h3 className="text-sm font-semibold text-slate-300">
-                      No playlists found
-                    </h3>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      There are no playlists matching your search.
-                    </p>
-
+                    <h3 className="text-sm font-semibold text-slate-300">No playlists found</h3>
+                    <p className="text-xs text-slate-500 mt-1">There are no playlists matching your search.</p>
                   </div>
-
                 ) : (
-
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
                     {filteredPlaylists.map((playlist) => {
                       const creator = getCreatorName(playlist);
                       const songCount = getPlaylistSongCount(playlist);
@@ -2346,48 +1879,24 @@ const AdminDashboard = () => {
                           key={playlist.id}
                           className="group bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden transition shadow-lg"
                         >
-
-                          <div
-                            className={`h-1 ${
-                              isPublic ? 'bg-emerald-500' : 'bg-amber-500'
-                            }`}
-                          />
-
-
+                          <div className={`h-1 ${isPublic ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                           <div className="p-5">
-
                             <div className="flex items-start justify-between gap-3">
-
                               <div className="flex items-center gap-3 min-w-0">
-
                                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500/20 to-sky-500/10 border border-slate-700 flex items-center justify-center shrink-0">
                                   <ListMusic className="w-6 h-6 text-teal-400" />
                                 </div>
-
                                 <div className="min-w-0">
-
                                   <h3 className="font-bold text-slate-100 text-sm truncate">
                                     {playlist.name || 'Untitled Playlist'}
                                   </h3>
-
                                   <div className="flex items-center gap-1.5 mt-1">
-
-                                    <User className="w-3 h-3 text-slate-500" />
-
-                                    <span className="text-[11px] text-slate-400">
-                                      Created by
-                                    </span>
-
-                                    <span className="text-[11px] font-semibold text-sky-400">
-                                      @{creator}
-                                    </span>
-
+                                    <User className="w-3.5 h-3.5 text-slate-500" />
+                                    <span className="text-[11px] text-slate-400">Created by</span>
+                                    <span className="text-[11px] font-semibold text-sky-400">@{creator}</span>
                                   </div>
-
                                 </div>
-
                               </div>
-
 
                               <div
                                 className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold ${
@@ -2396,23 +1905,17 @@ const AdminDashboard = () => {
                                     : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                 }`}
                               >
-
                                 {isPublic ? (
                                   <>
-                                    <Globe className="w-3 h-3" />
-                                    Public
+                                    <Globe className="w-3.5 h-3.5" /> Public
                                   </>
                                 ) : (
                                   <>
-                                    <Lock className="w-3 h-3" />
-                                    Pending
+                                    <Lock className="w-3.5 h-3.5" /> Pending
                                   </>
                                 )}
-
                               </div>
-
                             </div>
-
 
                             {playlist.description && (
                               <p className="text-[11px] text-slate-500 mt-3 line-clamp-2">
@@ -2420,72 +1923,46 @@ const AdminDashboard = () => {
                               </p>
                             )}
 
-
                             <div className="grid grid-cols-2 gap-2 mt-4">
-
                               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
-
                                 <div className="flex items-center gap-2">
-
                                   <Music2 className="w-4 h-4 text-teal-400" />
-
                                   <div>
-
                                     <p className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
                                       Songs
                                     </p>
-
-                                    <p className="text-sm font-bold text-slate-200">
-                                      {songCount}
-                                    </p>
-
+                                    <p className="text-sm font-bold text-slate-200">{songCount}</p>
                                   </div>
-
                                 </div>
-
                               </div>
 
-
                               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
-
                                 <div className="flex items-center gap-2">
-
                                   {isPublic ? (
                                     <Globe className="w-4 h-4 text-emerald-400" />
                                   ) : (
                                     <Lock className="w-4 h-4 text-amber-400" />
                                   )}
-
                                   <div>
-
                                     <p className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
                                       Visibility
                                     </p>
-
                                     <p className="text-sm font-bold text-slate-200">
                                       {isPublic ? 'Public' : 'Private'}
                                     </p>
-
                                   </div>
-
                                 </div>
-
                               </div>
-
                             </div>
 
-
                             <div className="flex items-center gap-2 mt-4">
-
                               <button
                                 type="button"
                                 onClick={() => handleOpenPlaylist(playlist)}
                                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5" />
-                                View All Songs
+                                <Eye className="w-3.5 h-3.5" /> View All Songs
                               </button>
-
 
                               <button
                                 type="button"
@@ -2497,7 +1974,6 @@ const AdminDashboard = () => {
                                     : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                                 }`}
                               >
-
                                 {isUpdating ? (
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                 ) : isPublic ? (
@@ -2505,51 +1981,158 @@ const AdminDashboard = () => {
                                 ) : (
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                 )}
-
-                                {isUpdating
-                                  ? 'Updating...'
-                                  : isPublic
-                                  ? 'Make Private'
-                                  : 'Make Public'}
-
+                                {isUpdating ? 'Updating...' : isPublic ? 'Make Private' : 'Make Public'}
                               </button>
-
                             </div>
-
                           </div>
-
                         </div>
                       );
                     })}
-
                   </div>
-
                 )}
-
               </div>
             )}
 
-          </>
+            {/* MESSAGES TAB */}
+            {activeTab === 'messages' && (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900/60 border border-amber-500/20 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                      <MessageSquare className="w-5 h-5 text-amber-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-slate-100">
+                        User Inquiries & Support Messages
+                      </h2>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Incoming contact form tickets submitted by users.
+                      </p>
+                    </div>
+                  </div>
 
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs bg-slate-950 px-3 py-1.5 border border-slate-800 rounded-xl text-slate-400">
+                      Total: <strong className="text-white">{messages.length}</strong>
+                    </span>
+                    <span className="text-xs bg-rose-500/10 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-xl font-bold">
+                      Unread: {unreadCount}
+                    </span>
+
+                    {/* CLEAR ALL MESSAGES BUTTON */}
+                    {messages.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={clearingMessages}
+                        onClick={handleClearAllMessages}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                        title="Delete all messages"
+                      >
+                        {clearingMessages ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                        <span>{clearingMessages ? 'Clearing...' : 'Clear All'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {filteredMessages.length === 0 ? (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl py-16 text-center">
+                    <MessageSquare className="w-8 h-8 mx-auto text-slate-700 mb-3" />
+                    <h3 className="text-sm font-semibold text-slate-300">No messages found</h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      No user inquiries match your search filter.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredMessages.map((msg) => {
+                      const msgId = msg._id || msg.id;
+                      const isRead = Boolean(msg.isRead);
+
+                      return (
+                        <div
+                          key={msgId}
+                          className={`p-4 rounded-2xl border transition flex flex-col md:flex-row md:items-start justify-between gap-4 ${
+                            isRead
+                              ? 'bg-slate-900/50 border-slate-800 opacity-75'
+                              : 'bg-slate-900 border-amber-500/40 shadow-lg'
+                          }`}
+                        >
+                          <div className="space-y-2 flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-slate-100">
+                                {msg.name || 'Anonymous User'}
+                              </span>
+                              {!isRead && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-500/20 border border-rose-500/30 text-rose-300 animate-pulse">
+                                  New Message
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                • {msg.createdAt || msg.created_at ? formatToIST(msg.createdAt || msg.created_at) : ''}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
+                              <span className="flex items-center gap-1.5">
+                                <Mail className="w-3.5 h-3.5 text-slate-500" />
+                                <a
+                                  href={`mailto:${msg.email}`}
+                                  className="hover:text-amber-400 underline"
+                                >
+                                  {msg.email}
+                                </a>
+                              </span>
+
+                              {msg.phone && (
+                                <span className="flex items-center gap-1.5">
+                                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                                  <a
+                                    href={`tel:${msg.phone}`}
+                                    className="hover:text-amber-400"
+                                  >
+                                    {msg.phone}
+                                  </a>
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
+                              {msg.message}
+                            </div>
+                          </div>
+
+                          {!isRead && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkMessageRead(msgId)}
+                              className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-center gap-1.5 shrink-0 self-start cursor-pointer transition active:scale-95"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Mark as Read</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
-
-        {/* ====================================================
-            ARTIST SONGS & DUPLICATE CLEANER MODAL
-        ==================================================== */}
-
+        {/* ARTIST SONGS MODAL */}
         {showArtistSongsModal && (
           <div className="fixed inset-0 z-[65] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-
-              {/* MODAL HEADER */}
               <div className="p-5 border-b border-slate-800 shrink-0">
-
                 <div className="flex items-start justify-between gap-4">
-
                   <div className="flex items-center gap-3 min-w-0">
-
                     <img
                       src={getArtistImage(selectedArtistForSongs)}
                       alt=""
@@ -2558,21 +2141,15 @@ const AdminDashboard = () => {
                         e.currentTarget.src = defaultArtistImage;
                       }}
                     />
-
                     <div className="min-w-0">
-
                       <h2 className="text-base sm:text-lg font-bold text-slate-100 truncate">
                         {getArtistName(selectedArtistForSongs)}
                       </h2>
-
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         {artistSongsList.length} total songs found
                       </p>
-
                     </div>
-
                   </div>
-
                   <button
                     type="button"
                     onClick={closeArtistSongsModal}
@@ -2580,7 +2157,6 @@ const AdminDashboard = () => {
                   >
                     <X className="w-5 h-5" />
                   </button>
-
                 </div>
 
                 {duplicateTitleSet.size > 0 && (
@@ -2591,50 +2167,27 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                 )}
-
               </div>
 
-              {/* MODAL CONTENT */}
               <div className="overflow-y-auto p-5 flex-1">
-
                 {loadingArtistSongs ? (
-
                   <div className="py-16 flex flex-col items-center justify-center">
-
                     <RefreshCw className="w-7 h-7 text-amber-400 animate-spin mb-3" />
-
-                    <p className="text-sm font-semibold text-slate-300">
-                      Loading artist songs...
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Scanning song database for duplicates.
-                    </p>
-
+                    <p className="text-sm font-semibold text-slate-300">Loading artist songs...</p>
+                    <p className="text-xs text-slate-500 mt-1">Scanning song database for duplicates.</p>
                   </div>
-
                 ) : artistSongsList.length === 0 ? (
-
                   <div className="py-16 text-center">
-
                     <div className="w-14 h-14 mx-auto bg-slate-800 rounded-2xl flex items-center justify-center mb-3">
                       <Music2 className="w-7 h-7 text-slate-600" />
                     </div>
-
-                    <h3 className="text-sm font-semibold text-slate-300">
-                      No songs found for this artist
-                    </h3>
-
+                    <h3 className="text-sm font-semibold text-slate-300">No songs found for this artist</h3>
                     <p className="text-xs text-slate-500 mt-1">
                       No songs are currently associated with {getArtistName(selectedArtistForSongs)}.
                     </p>
-
                   </div>
-
                 ) : (
-
                   <div className="space-y-2">
-
                     {artistSongsList.map((song, index) => {
                       const songId = song.id || song._id;
                       const normTitle = (song.title || '').trim().toLowerCase();
@@ -2650,42 +2203,30 @@ const AdminDashboard = () => {
                               : 'bg-slate-950 border-slate-800 hover:border-slate-700'
                           }`}
                         >
-
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-
                             <img
                               src={song.thumbnail_url || song.thumbnailUrl || defaultThumbnail}
                               alt=""
                               className="w-10 h-10 rounded-lg object-cover border border-slate-800 shrink-0"
                             />
-
                             <div className="min-w-0 flex-1">
-
                               <div className="flex items-center gap-2">
-
                                 <p className="font-semibold text-xs sm:text-sm text-slate-100 truncate">
                                   {song.title || 'Untitled Song'}
                                 </p>
-
                                 {isDuplicate && (
                                   <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-[9px] font-bold text-rose-400">
-                                    <CopyCheck className="w-2.5 h-2.5" />
-                                    Duplicate
+                                    <CopyCheck className="w-2.5 h-2.5" /> Duplicate
                                   </span>
                                 )}
-
                               </div>
-
                               <p className="text-[10px] text-slate-500 truncate mt-0.5">
                                 {song.source_url || song.sourceUrl || 'No source URL'}
                               </p>
-
                             </div>
-
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-
                             {song.source_url && (
                               <a
                                 href={song.source_url}
@@ -2697,13 +2238,11 @@ const AdminDashboard = () => {
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
-
                             <button
                               type="button"
                               disabled={isDeleting}
                               onClick={() => handleDeleteArtistDuplicateSong(songId)}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-xs font-semibold cursor-pointer disabled:opacity-50"
-                              title="Delete this track"
                             >
                               {isDeleting ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -2712,26 +2251,18 @@ const AdminDashboard = () => {
                               )}
                               Delete
                             </button>
-
                           </div>
-
                         </div>
                       );
                     })}
-
                   </div>
-
                 )}
-
               </div>
 
-              {/* MODAL FOOTER */}
               <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between gap-3 shrink-0">
-
                 <div className="text-[10px] text-slate-500">
                   Deleting a track removes it completely from songs and playlists.
                 </div>
-
                 <button
                   type="button"
                   onClick={closeArtistSongsModal}
@@ -2739,24 +2270,15 @@ const AdminDashboard = () => {
                 >
                   Close
                 </button>
-
               </div>
-
             </div>
-
           </div>
         )}
 
-
-        {/* ====================================================
-            USER INSPECTOR MODAL
-        ==================================================== */}
-
+        {/* USER INSPECTOR MODAL */}
         {showUserModal && (
           <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl relative">
-
               <button
                 type="button"
                 onClick={() => {
@@ -2768,30 +2290,18 @@ const AdminDashboard = () => {
                 <X className="w-5 h-5" />
               </button>
 
-
               <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4">
                 <Shield className="w-5 h-5 text-amber-400" />
                 User Record & Activity Inspector
               </h3>
 
-
               {loadingUserDetail || !selectedUserDetail ? (
-
                 <div className="py-12 flex flex-col items-center justify-center gap-2">
-
                   <RefreshCw className="w-6 h-6 text-amber-400 animate-spin" />
-
-                  <p className="text-xs text-slate-400">
-                    Loading user records...
-                  </p>
-
+                  <p className="text-xs text-slate-400">Loading user records...</p>
                 </div>
-
               ) : (
-
                 <div className="space-y-6 text-xs">
-
-                  {/* PROFILE HEADER IN INSPECTOR */}
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
                     <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
                       {getUserAvatar(selectedUserDetail.user) ? (
@@ -2825,286 +2335,163 @@ const AdminDashboard = () => {
                     </div>
                   </div>
 
-                  {/* PROFILE DETAILS */}
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                     <div className="space-y-3">
-
                       <div className="flex items-center gap-2 text-slate-300">
-
                         <Mail className="w-4 h-4 text-emerald-400" />
-
-                        <span className="font-semibold">
-                          Email:
-                        </span>
-
+                        <span className="font-semibold">Email:</span>
                         <span className="text-slate-100 break-all">
                           {selectedUserDetail.user?.email}
                         </span>
-
                       </div>
 
-
                       <div className="flex items-center gap-2 text-slate-300">
-
                         <Users className="w-4 h-4 text-sky-400" />
-
-                        <span className="font-semibold">
-                          Username:
-                        </span>
-
-                        <span className="text-slate-100">
-                          {selectedUserDetail.user?.username}
-                        </span>
-
+                        <span className="font-semibold">Username:</span>
+                        <span className="text-slate-100">{selectedUserDetail.user?.username}</span>
                       </div>
 
-
                       <div className="flex items-center gap-2 text-slate-300">
-
                         <Crown className="w-4 h-4 text-emerald-400" />
-
-                        <span className="font-semibold">
-                          Membership:
+                        <span className="font-semibold">Membership:</span>
+                        <span
+                          className={`font-bold ${
+                            isUserPremium(selectedUserDetail.user)
+                              ? 'text-emerald-400'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {isUserPremium(selectedUserDetail.user)
+                            ? 'Fackify Premium'
+                            : 'Free Tier'}
                         </span>
-
-                        <span className={`font-bold ${isUserPremium(selectedUserDetail.user) ? 'text-emerald-400' : 'text-slate-400'}`}>
-                          {isUserPremium(selectedUserDetail.user) ? 'Fackify Premium' : 'Free Tier'}
-                        </span>
-
                       </div>
 
-
-                      {/* PREMIUM REQUEST STATUS IN INSPECTOR */}
-                      {Boolean(selectedUserDetail.user?.premium_requested) && !isUserPremium(selectedUserDetail.user) && (
-                        <div className="flex items-center gap-2 text-amber-400 font-semibold">
-                          <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
-                          <span>Fackify Premium Request Pending</span>
-                        </div>
-                      )}
-
+                      {Boolean(selectedUserDetail.user?.premium_requested) &&
+                        !isUserPremium(selectedUserDetail.user) && (
+                          <div className="flex items-center gap-2 text-amber-400 font-semibold">
+                            <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                            <span>Fackify Premium Request Pending</span>
+                          </div>
+                        )}
 
                       <div className="flex items-center gap-2 text-slate-300">
-
                         <Calendar className="w-4 h-4 text-amber-400" />
-
-                        <span className="font-semibold">
-                          Registered:
-                        </span>
-
+                        <span className="font-semibold">Registered:</span>
                         <span className="text-slate-100">
                           {selectedUserDetail.user?.created_at
                             ? formatToIST(selectedUserDetail.user.created_at)
                             : 'Unknown'}
                         </span>
-
                       </div>
-
                     </div>
 
-
                     <div className="border-t sm:border-t-0 sm:border-l border-slate-800 pt-4 sm:pt-0 sm:pl-4">
-
                       <div className="flex items-center gap-2 text-slate-300 mb-2">
-
                         <KeyRound className="w-4 h-4 text-rose-400" />
-
-                        <span className="font-semibold">
-                          Password Security
-                        </span>
-
+                        <span className="font-semibold">Password Security</span>
                       </div>
-
                       <div className="bg-slate-900 border border-slate-800 rounded p-3 text-[10px] text-slate-500">
                         Password credentials are protected using a secure one-way password hash.
                       </div>
-
                     </div>
-
                   </div>
 
-
-                  {/* USER PLAYLISTS */}
-
                   <div>
-
                     <h4 className="font-bold text-slate-200 text-sm mb-2 flex items-center gap-1.5">
-
                       <Folder className="w-4 h-4 text-teal-400" />
-
                       Created Playlists ({selectedUserDetail.playlists?.length || 0})
-
                     </h4>
-
-
                     {selectedUserDetail.playlists?.length === 0 ? (
-
                       <p className="text-slate-500 italic bg-slate-950/50 p-3 rounded-lg border border-slate-800">
                         No playlists created by this user yet.
                       </p>
-
                     ) : (
-
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
                         {selectedUserDetail.playlists.map((playlist) => (
-
                           <div
                             key={playlist.id}
                             className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between"
                           >
-
                             <div>
-
-                              <p className="font-semibold text-slate-100">
-                                {playlist.name}
-                              </p>
-
+                              <p className="font-semibold text-slate-100">{playlist.name}</p>
                               <p className="text-[10px] text-slate-400">
                                 {playlist.song_count || 0} songs · {playlist.is_public ? 'Public' : 'Private'}
                               </p>
-
                             </div>
-
                           </div>
-
                         ))}
-
                       </div>
-
                     )}
-
                   </div>
 
-
-                  {/* LIKED SONGS */}
-
                   <div>
-
                     <h4 className="font-bold text-slate-200 text-sm mb-2 flex items-center gap-1.5">
-
                       <Heart className="w-4 h-4 text-rose-500 fill-current" />
-
                       Liked Songs ({selectedUserDetail.likedSongs?.length || 0})
-
                     </h4>
-
-
                     {selectedUserDetail.likedSongs?.length === 0 ? (
-
                       <p className="text-slate-500 italic bg-slate-950/50 p-3 rounded-lg border border-slate-800">
                         No liked songs in user history.
                       </p>
-
                     ) : (
-
                       <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
-
                         {selectedUserDetail.likedSongs.map((song) => (
-
                           <div
                             key={song.id}
                             className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-3"
                           >
-
                             <div className="flex items-center gap-2.5 min-w-0">
-
                               <img
                                 src={song.thumbnail_url || defaultThumbnail}
                                 alt=""
                                 className="w-8 h-8 rounded object-cover"
                               />
-
                               <div className="min-w-0">
-
-                                <p className="font-semibold text-slate-100 truncate">
-                                  {song.title}
-                                </p>
-
-                                <p className="text-[10px] text-slate-400 truncate">
-                                  {song.artist}
-                                </p>
-
+                                <p className="font-semibold text-slate-100 truncate">{song.title}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{song.artist}</p>
                               </div>
-
                             </div>
-
-
                             <span className="text-[10px] text-slate-500 shrink-0">
                               {song.liked_at ? formatDateIST(song.liked_at) : ''}
                             </span>
-
                           </div>
-
                         ))}
-
                       </div>
-
                     )}
-
                   </div>
-
                 </div>
-
               )}
-
             </div>
-
           </div>
         )}
 
-
-        {/* ====================================================
-            PLAYLIST SONG INSPECTOR MODAL
-        ==================================================== */}
-
+        {/* PLAYLIST INSPECTOR MODAL */}
         {showPlaylistModal && (
           <div className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-
               <div className="p-5 border-b border-slate-800 shrink-0">
-
                 <div className="flex items-start justify-between gap-4">
-
                   <div className="flex items-center gap-3 min-w-0">
-
                     <div className="w-12 h-12 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center shrink-0">
                       <ListMusic className="w-6 h-6 text-teal-400" />
                     </div>
-
-
                     <div className="min-w-0">
-
                       <h2 className="text-base sm:text-lg font-bold text-slate-100 truncate">
                         {selectedPlaylist?.name || 'Playlist'}
                       </h2>
-
-
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
-
-                        <span className="text-[11px] text-slate-500">
-                          Created by
-                        </span>
-
+                        <span className="text-[11px] text-slate-500">Created by</span>
                         <span className="text-[11px] font-semibold text-sky-400">
                           @{getCreatorName(selectedPlaylist)}
                         </span>
-
-                        <span className="text-slate-700">
-                          •
-                        </span>
-
+                        <span className="text-slate-700">•</span>
                         <span className="text-[11px] text-slate-500">
                           {getPlaylistSongCount(selectedPlaylist)} songs
                         </span>
-
                       </div>
-
                     </div>
-
                   </div>
-
 
                   <button
                     type="button"
@@ -3113,12 +2500,9 @@ const AdminDashboard = () => {
                   >
                     <X className="w-5 h-5" />
                   </button>
-
                 </div>
 
-
                 <div className="flex items-center justify-between gap-3 mt-4">
-
                   <div
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold ${
                       selectedPlaylist?.is_public
@@ -3126,21 +2510,16 @@ const AdminDashboard = () => {
                         : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
                     }`}
                   >
-
                     {selectedPlaylist?.is_public ? (
                       <>
-                        <Globe className="w-3.5 h-3.5" />
-                        Public Playlist
+                        <Globe className="w-3.5 h-3.5" /> Public Playlist
                       </>
                     ) : (
                       <>
-                        <Lock className="w-3.5 h-3.5" />
-                        Awaiting Admin Approval
+                        <Lock className="w-3.5 h-3.5" /> Awaiting Admin Approval
                       </>
                     )}
-
                   </div>
-
 
                   <button
                     type="button"
@@ -3152,7 +2531,6 @@ const AdminDashboard = () => {
                         : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                     }`}
                   >
-
                     {updatingPlaylistId === selectedPlaylist?.id ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     ) : selectedPlaylist?.is_public ? (
@@ -3160,160 +2538,94 @@ const AdminDashboard = () => {
                     ) : (
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     )}
-
-                    {selectedPlaylist?.is_public
-                      ? 'Make Private'
-                      : 'Make Public'}
-
+                    {selectedPlaylist?.is_public ? 'Make Private' : 'Make Public'}
                   </button>
-
                 </div>
-
               </div>
-
 
               <div className="overflow-y-auto p-5">
-
                 {loadingPlaylist ? (
-
                   <div className="py-16 flex flex-col items-center justify-center">
-
                     <RefreshCw className="w-7 h-7 text-teal-400 animate-spin mb-3" />
-
-                    <p className="text-sm font-semibold text-slate-300">
-                      Loading playlist songs...
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Inspecting every track in this playlist.
-                    </p>
-
+                    <p className="text-sm font-semibold text-slate-300">Loading playlist songs...</p>
+                    <p className="text-xs text-slate-500 mt-1">Inspecting every track in this playlist.</p>
                   </div>
-
-                ) : (
-
-                  (() => {
-                    const playlistSongs = getPlaylistSongs(selectedPlaylist);
-
-                    if (playlistSongs.length === 0) {
-                      return (
-                        <div className="py-16 text-center">
-
-                          <div className="w-14 h-14 mx-auto bg-slate-800 rounded-2xl flex items-center justify-center mb-3">
-                            <Music2 className="w-7 h-7 text-slate-600" />
-                          </div>
-
-                          <h3 className="text-sm font-semibold text-slate-300">
-                            No songs in this playlist
-                          </h3>
-
-                          <p className="text-xs text-slate-500 mt-1">
-                            This playlist currently contains no tracks.
-                          </p>
-
-                        </div>
-                      );
-                    }
-
+                ) : (() => {
+                  const playlistSongs = getPlaylistSongs(selectedPlaylist);
+                  if (playlistSongs.length === 0) {
                     return (
-                      <div className="space-y-2">
-
-                        {playlistSongs.map((song, index) => {
-                          const songData = song.song || song;
-
-                          return (
-                            <div
-                              key={songData.id || `${selectedPlaylist?.id}-${index}`}
-                              className="group bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3 transition"
-                            >
-
-                              <div className="flex items-center gap-3">
-
-                                <div className="w-7 text-center shrink-0">
-
-                                  <span className="text-[11px] font-bold text-slate-600 group-hover:text-slate-400">
-                                    {String(index + 1).padStart(2, '0')}
-                                  </span>
-
-                                </div>
-
-
-                                <img
-                                  src={
-                                    songData.thumbnail_url ||
-                                    songData.thumbnailUrl ||
-                                    defaultThumbnail
-                                  }
-                                  alt={songData.title || 'Song'}
-                                  className="w-11 h-11 rounded-lg object-cover border border-slate-800 shrink-0"
-                                />
-
-
-                                <div className="min-w-0 flex-1">
-
-                                  <p className="font-semibold text-slate-100 text-xs sm:text-sm truncate">
-                                    {songData.title || 'Untitled Song'}
-                                  </p>
-
-                                  <p className="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
-                                    {getSongArtistNames(songData).join(', ') ||
-                                      songData.artist ||
-                                      'Unknown Artist'}
-                                  </p>
-
-                                </div>
-
-
-                                <div className="hidden sm:block shrink-0">
-
-                                  <span className="capitalize px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[9px] text-slate-500">
-                                    {songData.source_type || 'direct'}
-                                  </span>
-
-                                </div>
-
-
-                                {songData.source_url && (
-                                  <a
-                                    href={songData.source_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    title="Open source"
-                                    className="p-2 text-slate-500 hover:text-emerald-400 hover:bg-slate-900 rounded-lg transition"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                )}
-
-                              </div>
-
-                            </div>
-                          );
-                        })}
-
+                      <div className="py-16 text-center">
+                        <div className="w-14 h-14 mx-auto bg-slate-800 rounded-2xl flex items-center justify-center mb-3">
+                          <Music2 className="w-7 h-7 text-slate-600" />
+                        </div>
+                        <h3 className="text-sm font-semibold text-slate-300">No songs in this playlist</h3>
+                        <p className="text-xs text-slate-500 mt-1">This playlist currently contains no tracks.</p>
                       </div>
                     );
+                  }
 
-                  })()
+                  return (
+                    <div className="space-y-2">
+                      {playlistSongs.map((song, index) => {
+                        const songData = song.song || song;
+                        return (
+                          <div
+                            key={songData.id || `${selectedPlaylist?.id}-${index}`}
+                            className="group bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3 transition"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 text-center shrink-0">
+                                <span className="text-[11px] font-bold text-slate-600 group-hover:text-slate-400">
+                                  {String(index + 1).padStart(2, '0')}
+                                </span>
+                              </div>
+                              <img
+                                src={songData.thumbnail_url || songData.thumbnailUrl || defaultThumbnail}
+                                alt={songData.title || 'Song'}
+                                className="w-11 h-11 rounded-lg object-cover border border-slate-800 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-slate-100 text-xs sm:text-sm truncate">
+                                  {songData.title || 'Untitled Song'}
+                                </p>
+                                <p className="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
+                                  {getSongArtistNames(songData).join(', ') ||
+                                    songData.artist ||
+                                    'Unknown Artist'}
+                                </p>
+                              </div>
 
-                )}
+                              <div className="hidden sm:block shrink-0">
+                                <span className="capitalize px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[9px] text-slate-500">
+                                  {songData.source_type || 'direct'}
+                                </span>
+                              </div>
 
+                              {songData.source_url && (
+                                <a
+                                  href={songData.source_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Open source"
+                                  className="p-2 text-slate-500 hover:text-emerald-400 hover:bg-slate-900 rounded-lg transition"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
-
               <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-
                 <div className="flex items-center gap-2 text-[10px] text-slate-500">
-
                   <AlertCircle className="w-3.5 h-3.5" />
-
-                  <span>
-                    Review playlist songs before approving it.
-                  </span>
-
+                  <span>Review playlist songs before approving it.</span>
                 </div>
-
-
                 <button
                   type="button"
                   onClick={closePlaylistModal}
@@ -3321,24 +2633,15 @@ const AdminDashboard = () => {
                 >
                   Close
                 </button>
-
               </div>
-
             </div>
-
           </div>
         )}
 
-
-        {/* ====================================================
-            ADD / EDIT SONG MODAL
-        ==================================================== */}
-
+        {/* ADD / EDIT SONG MODAL */}
         {showSongModal && (
           <div className="fixed inset-0 z-[70] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative">
-
               <button
                 type="button"
                 onClick={() => {
@@ -3351,27 +2654,16 @@ const AdminDashboard = () => {
                 <X className="w-5 h-5" />
               </button>
 
-
               <h3 className="text-lg font-bold text-slate-100 mb-1">
                 {editingSong ? 'Edit Track Details' : 'Add New Track'}
               </h3>
-
-
               <p className="text-[11px] text-slate-500 mb-5">
                 Select one or more existing artists for this song.
               </p>
 
-
               <form onSubmit={handleSaveSong} className="space-y-4 text-xs">
-
-                {/* SONG TITLE */}
-
                 <div>
-
-                  <label className="block text-slate-400 font-semibold mb-1.5">
-                    Song Title *
-                  </label>
-
+                  <label className="block text-slate-400 font-semibold mb-1.5">Song Title *</label>
                   <input
                     type="text"
                     required
@@ -3385,51 +2677,31 @@ const AdminDashboard = () => {
                     placeholder="e.g. Tum Hi Ho"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
-
                 </div>
 
-
-                {/* ARTISTS */}
-
                 <div>
-
                   <div className="flex items-center justify-between mb-1.5">
-
-                    <label className="block text-slate-400 font-semibold">
-                      Artists *
-                    </label>
-
+                    <label className="block text-slate-400 font-semibold">Artists *</label>
                     <span className="text-[10px] text-slate-600">
                       {formData.artistIds.length} selected
                     </span>
-
                   </div>
 
-
                   {selectedArtists.length > 0 && (
-
                     <div className="flex flex-wrap gap-2 mb-2">
-
                       {selectedArtists.map((artist) => {
                         const artistId = getArtistId(artist);
-
                         return (
                           <div
                             key={normalizeId(artistId)}
                             className="inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl px-2 py-1"
                           >
-
                             <img
                               src={getArtistImage(artist)}
                               alt=""
                               className="w-5 h-5 rounded-full object-cover"
                             />
-
-                            <span className="text-[10px] font-semibold">
-                              {getArtistName(artist)}
-                            </span>
-
-
+                            <span className="text-[10px] font-semibold">{getArtistName(artist)}</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveSongArtist(artistId)}
@@ -3437,19 +2709,14 @@ const AdminDashboard = () => {
                             >
                               <X className="w-3 h-3" />
                             </button>
-
                           </div>
                         );
                       })}
-
                     </div>
                   )}
 
-
                   <div className="relative">
-
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-
                     <input
                       type="text"
                       value={artistSearch}
@@ -3457,22 +2724,13 @@ const AdminDashboard = () => {
                       placeholder="Search existing artists..."
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                     />
-
                   </div>
 
-
                   <div className="mt-2 max-h-44 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl">
-
                     {filteredSongArtists.length === 0 ? (
-
                       <div className="p-4 text-center">
-
                         <Mic2 className="w-5 h-5 mx-auto text-slate-600 mb-2" />
-
-                        <p className="text-[10px] text-slate-500">
-                          No artists found.
-                        </p>
-
+                        <p className="text-[10px] text-slate-500">No artists found.</p>
                         <button
                           type="button"
                           onClick={() => {
@@ -3488,11 +2746,8 @@ const AdminDashboard = () => {
                         >
                           + Create Artist
                         </button>
-
                       </div>
-
                     ) : (
-
                       filteredSongArtists.map((artist) => {
                         const artistId = getArtistId(artist);
                         const normalizedId = normalizeId(artistId);
@@ -3509,19 +2764,15 @@ const AdminDashboard = () => {
                               selected ? 'bg-amber-500/10' : 'hover:bg-slate-900'
                             }`}
                           >
-
                             <img
                               src={getArtistImage(artist)}
                               alt=""
                               className="w-8 h-8 rounded-full object-cover border border-slate-800 shrink-0"
                             />
-
                             <div className="min-w-0 flex-1">
-
                               <p className="text-xs font-semibold text-slate-200 truncate">
                                 {getArtistName(artist)}
                               </p>
-
                               <p className="text-[9px] text-slate-500">
                                 {Number(
                                   artist.song_count ??
@@ -3531,31 +2782,21 @@ const AdminDashboard = () => {
                                 )}{' '}
                                 songs
                               </p>
-
                             </div>
-
-
                             {selected && (
                               <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
                             )}
-
                           </button>
                         );
                       })
-
                     )}
-
                   </div>
 
-
                   {artists.length === 0 && (
-
                     <div className="mt-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-
                       <p className="text-[10px] text-amber-400">
                         No artists exist yet. Create an artist first.
                       </p>
-
                       <button
                         type="button"
                         onClick={() => {
@@ -3566,22 +2807,12 @@ const AdminDashboard = () => {
                       >
                         + Add Artist
                       </button>
-
                     </div>
-
                   )}
-
                 </div>
 
-
-                {/* SOURCE URL */}
-
                 <div>
-
-                  <label className="block text-slate-400 font-semibold mb-1.5">
-                    Source URL *
-                  </label>
-
+                  <label className="block text-slate-400 font-semibold mb-1.5">Source URL *</label>
                   <input
                     type="url"
                     required
@@ -3595,18 +2826,10 @@ const AdminDashboard = () => {
                     placeholder="https://www.youtube.com/watch?v=..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
-
                 </div>
 
-
-                {/* THUMBNAIL */}
-
                 <div>
-
-                  <label className="block text-slate-400 font-semibold mb-1.5">
-                    Thumbnail Artwork URL *
-                  </label>
-
+                  <label className="block text-slate-400 font-semibold mb-1.5">Thumbnail Artwork URL *</label>
                   <input
                     type="url"
                     required
@@ -3620,14 +2843,9 @@ const AdminDashboard = () => {
                     placeholder="https://images.unsplash.com/..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
-
                 </div>
 
-
-                {/* BUTTONS */}
-
                 <div className="flex items-center justify-end gap-3 pt-3">
-
                   <button
                     type="button"
                     onClick={() => {
@@ -3640,7 +2858,6 @@ const AdminDashboard = () => {
                     Cancel
                   </button>
 
-
                   <button
                     type="submit"
                     disabled={formData.artistIds.length === 0}
@@ -3648,26 +2865,16 @@ const AdminDashboard = () => {
                   >
                     {editingSong ? 'Save Changes' : 'Publish Track'}
                   </button>
-
                 </div>
-
               </form>
-
             </div>
-
           </div>
         )}
 
-
-        {/* ====================================================
-            ADD / EDIT ARTIST MODAL
-        ==================================================== */}
-
+        {/* ADD / EDIT ARTIST MODAL */}
         {showArtistModal && (
           <div className="fixed inset-0 z-[80] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-
               <button
                 type="button"
                 onClick={() => {
@@ -3679,36 +2886,23 @@ const AdminDashboard = () => {
                 <X className="w-5 h-5" />
               </button>
 
-
               <div className="flex items-center gap-3 mb-5">
-
                 <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                   <Mic2 className="w-5 h-5 text-amber-400" />
                 </div>
-
                 <div>
-
                   <h3 className="text-lg font-bold text-slate-100">
                     {editingArtist ? 'Edit Artist' : 'Add Artist'}
                   </h3>
-
                   <p className="text-[10px] text-slate-500 mt-0.5">
                     Artist information will be reused across songs.
                   </p>
-
                 </div>
-
               </div>
 
-
               <form onSubmit={handleSaveArtist} className="space-y-4 text-xs">
-
                 <div>
-
-                  <label className="block text-slate-400 font-semibold mb-1.5">
-                    Artist Name *
-                  </label>
-
+                  <label className="block text-slate-400 font-semibold mb-1.5">Artist Name *</label>
                   <input
                     type="text"
                     required
@@ -3722,16 +2916,10 @@ const AdminDashboard = () => {
                     placeholder="e.g. Arijit Singh"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
-
                 </div>
 
-
                 <div>
-
-                  <label className="block text-slate-400 font-semibold mb-1.5">
-                    Artist Image URL *
-                  </label>
-
+                  <label className="block text-slate-400 font-semibold mb-1.5">Artist Image URL *</label>
                   <input
                     type="url"
                     required
@@ -3745,16 +2933,11 @@ const AdminDashboard = () => {
                     placeholder="https://..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                   />
-
                 </div>
 
-
                 {artistFormData.imageUrl && (
-
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-
                     <div className="flex items-center gap-3">
-
                       <img
                         src={artistFormData.imageUrl}
                         alt="Artist preview"
@@ -3763,28 +2946,19 @@ const AdminDashboard = () => {
                           e.currentTarget.src = defaultArtistImage;
                         }}
                       />
-
                       <div className="min-w-0 flex-1">
-
                         <p className="text-[9px] uppercase tracking-wider text-slate-600 font-bold">
                           Preview
                         </p>
-
                         <p className="text-sm font-bold text-slate-200 truncate">
                           {artistFormData.name || 'Artist Name'}
                         </p>
-
                       </div>
-
                     </div>
-
                   </div>
-
                 )}
 
-
                 <div className="flex items-center justify-end gap-3 pt-3">
-
                   <button
                     type="button"
                     onClick={() => {
@@ -3796,34 +2970,19 @@ const AdminDashboard = () => {
                     Cancel
                   </button>
 
-
                   <button
                     type="submit"
                     disabled={savingArtist}
                     className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-
-                    {savingArtist && (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    )}
-
-                    {savingArtist
-                      ? 'Saving...'
-                      : editingArtist
-                      ? 'Save Changes'
-                      : 'Create Artist'}
-
+                    {savingArtist && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    {savingArtist ? 'Saving...' : editingArtist ? 'Save Changes' : 'Create Artist'}
                   </button>
-
                 </div>
-
               </form>
-
             </div>
-
           </div>
         )}
-
       </div>
     </div>
   );

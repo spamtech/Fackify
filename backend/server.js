@@ -17,6 +17,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import playlistRoutes from './routes/playlistRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
 
 import { notFound } from './middleware/notFoundMiddleware.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
@@ -57,6 +58,11 @@ app.use(
 );
 
 /* ============================================================
+   STATIC MEDIA UPLOADS
+============================================================ */
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+/* ============================================================
    API ROUTES
 ============================================================ */
 app.use('/api/auth', authRoutes);
@@ -67,6 +73,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/playlists', playlistRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/contact', contactRoutes);
 
 /* ============================================================
    HEALTH CHECK
@@ -97,7 +104,7 @@ const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
 app.use(express.static(frontendDistPath));
 
 app.get('*', (req, res, next) => {
-  if (req.originalUrl.startsWith('/api')) {
+  if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads')) {
     return next();
   }
   res.sendFile(path.join(frontendDistPath, 'index.html'));
@@ -122,4 +129,3 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Frontend    : ${FRONTEND_URL}`);
   console.log('==========================================');
 });
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

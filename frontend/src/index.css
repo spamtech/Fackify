@@ -1,7 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Poppins:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: 'Poppins', sans-serif;
+  --font-retro: 'VT323', monospace;
 }
 
 @layer base {
@@ -26,7 +28,53 @@
   }
 }
 
-/* Animated Audio Equalizer Bars */
+/* ============================================================
+   RETRO CRT & PHOSPHOR EFFECTS
+============================================================ */
+
+.font-retro {
+  font-family: var(--font-retro) !important;
+}
+
+/* Interlaced scanline raster lines */
+.scanlines-overlay {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.55) 50%
+  );
+  background-size: 100% 4px;
+}
+
+/* Vignette curved cathode-ray tube falloff */
+.crt-vignette {
+  background: radial-gradient(
+    circle at center, 
+    transparent 65%, 
+    rgba(0, 0, 0, 0.85) 100%
+  );
+}
+
+/* Pixelation and green phosphor monochrome dither */
+.retro-pixel-filter {
+  filter: grayscale(100%) contrast(150%) brightness(90%) sepia(100%) hue-rotate(85deg) saturate(350%);
+  image-rendering: pixelated;
+}
+
+/* Subtle CRT screen refresh pulse */
+@keyframes crtFlicker {
+  0% { opacity: 0.98; }
+  50% { opacity: 1; }
+  100% { opacity: 0.97; }
+}
+
+.crt-flicker {
+  animation: crtFlicker 0.15s infinite;
+}
+
+/* ============================================================
+   ANIMATED AUDIO EQUALIZER BARS
+============================================================ */
+
 @keyframes bounceBar {
   0%, 100% {
     height: 4px;
