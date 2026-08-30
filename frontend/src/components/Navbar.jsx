@@ -6,6 +6,7 @@ import {
 } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext';
 import api from '../api/axiosInstance';
 
 import {
@@ -20,8 +21,6 @@ import {
   ChevronDown,
   User,
   Bell,
-  MessageCircle,
-  Instagram,
   Users,
   Sparkles,
   Send,
@@ -29,9 +28,31 @@ import {
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { songColors, isPlaying } = usePlayer();
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  /* =========================================================
+     DYNAMIC "NOW PLAYING" COLORS
+     Mirrors MediaPlayer.jsx so the navbar's accent colors
+     shift together with the media player when a song changes.
+  ========================================================= */
+
+  const colors = songColors || {
+    primary: '#10b981',
+    secondary: '#06b6d4',
+    accent: '#34d399',
+    glow: 'rgba(16, 185, 129, 0.18)',
+    background: '#020617',
+  };
+
+  const navbarStyle = {
+    '--nav-primary': colors.primary,
+    '--nav-secondary': colors.secondary,
+    '--nav-accent': colors.accent,
+    '--nav-glow': colors.glow,
+  };
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -155,7 +176,6 @@ export default function Navbar() {
           text-white
           border-white/[0.08]
           shadow-lg
-          shadow-emerald-500/[0.04]
         `;
 
     const hoverClasses =
@@ -189,6 +209,16 @@ export default function Navbar() {
     `;
   };
 
+  const navItemStyle = (path, activeColor = 'emerald') => {
+    if (activeColor === 'rose' || !isActive(path)) {
+      return undefined;
+    }
+
+    return {
+      boxShadow: `0 10px 15px -3px color-mix(in srgb, var(--nav-primary) 4%, transparent)`,
+    };
+  };
+
   /* =========================================================
      ICON COLOR
   ========================================================= */
@@ -213,10 +243,23 @@ export default function Navbar() {
       transition-all duration-300
       ${
         active
-          ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.45)]'
+          ? ''
           : 'text-slate-500 group-hover:text-emerald-400'
       }
     `;
+  };
+
+  const getIconStyle = (path, color = 'emerald') => {
+    const active = isActive(path);
+
+    if (color === 'rose' || !active) {
+      return undefined;
+    }
+
+    return {
+      color: 'var(--nav-accent)',
+      filter: `drop-shadow(0 0 8px color-mix(in srgb, var(--nav-accent) 45%, transparent))`,
+    };
   };
 
   /* =========================================================
@@ -254,9 +297,13 @@ export default function Navbar() {
           w-7
           -translate-x-1/2
           rounded-full
-          bg-emerald-400
-          shadow-[0_0_10px_rgba(52,211,153,0.75)]
+          transition-colors
+          duration-1000
         "
+        style={{
+          background: 'var(--nav-accent)',
+          boxShadow: `0 0 10px color-mix(in srgb, var(--nav-accent) 75%, transparent)`,
+        }}
       />
     );
   };
@@ -267,6 +314,7 @@ export default function Navbar() {
 
   return (
     <header
+      style={navbarStyle}
       className="
         sticky
         top-0
@@ -289,9 +337,11 @@ export default function Navbar() {
           w-[70%]
           -translate-x-1/2
           rounded-full
-          bg-emerald-500/[0.07]
           blur-3xl
+          transition-colors
+          duration-1000
         "
+        style={{ background: `color-mix(in srgb, var(--nav-primary) 7%, transparent)` }}
       />
 
       <div
@@ -303,9 +353,11 @@ export default function Navbar() {
           h-20
           w-48
           rounded-full
-          bg-cyan-500/[0.055]
           blur-3xl
+          transition-colors
+          duration-1000
         "
+        style={{ background: `color-mix(in srgb, var(--nav-secondary) 5.5%, transparent)` }}
       />
 
       {/* FLOATING NAVBAR */}
@@ -316,13 +368,19 @@ export default function Navbar() {
             absolute
             -inset-1
             rounded-[27px]
-            bg-gradient-to-r
-            from-emerald-500/[0.12]
-            via-cyan-500/[0.04]
-            to-emerald-500/[0.10]
             opacity-80
             blur-xl
+            transition-colors
+            duration-1000
           "
+          style={{
+            background: `linear-gradient(
+              90deg,
+              color-mix(in srgb, var(--nav-primary) 12%, transparent),
+              color-mix(in srgb, var(--nav-secondary) 4%, transparent),
+              color-mix(in srgb, var(--nav-primary) 10%, transparent)
+            )`,
+          }}
         />
 
         {/* MAIN GLASS PANEL */}
@@ -333,12 +391,17 @@ export default function Navbar() {
             rounded-[24px]
             border
             border-white/[0.09]
-            bg-slate-950/55
+            bg-slate-950/85
             shadow-2xl
             shadow-black/40
-            backdrop-blur-[32px]
+            backdrop-blur-[48px]
             backdrop-saturate-150
           "
+          style={{
+            boxShadow: isPlaying
+              ? `0 0 45px var(--nav-glow)`
+              : undefined,
+          }}
         >
           <div
             className="
@@ -346,11 +409,17 @@ export default function Navbar() {
               absolute
               inset-0
               rounded-[24px]
-              bg-gradient-to-r
-              from-emerald-500/[0.045]
-              via-transparent
-              to-cyan-500/[0.035]
+              transition-colors
+              duration-1000
             "
+            style={{
+              background: `linear-gradient(
+                90deg,
+                color-mix(in srgb, var(--nav-primary) 4.5%, transparent),
+                transparent,
+                color-mix(in srgb, var(--nav-secondary) 3.5%, transparent)
+              )`,
+            }}
           />
 
           <div
@@ -360,11 +429,17 @@ export default function Navbar() {
               inset-x-6
               top-0
               h-px
-              bg-gradient-to-r
-              from-transparent
-              via-emerald-300/50
-              to-transparent
+              transition-colors
+              duration-1000
             "
+            style={{
+              background: `linear-gradient(
+                90deg,
+                transparent,
+                color-mix(in srgb, var(--nav-primary) 50%, transparent),
+                transparent
+              )`,
+            }}
           />
 
           {/* NAV CONTENT */}
@@ -372,7 +447,7 @@ export default function Navbar() {
             className="
               relative
               flex
-              min-h-[76px]
+              min-h-[92px]
               items-center
               justify-between
               gap-3
@@ -393,13 +468,13 @@ export default function Navbar() {
                     absolute
                     inset-0
                     rounded-2xl
-                    bg-emerald-400/30
                     opacity-0
                     blur-xl
                     transition-all
                     duration-500
                     group-hover:opacity-100
                   "
+                  style={{ background: `color-mix(in srgb, var(--nav-primary) 30%, transparent)` }}
                 />
 
                 <div
@@ -414,18 +489,17 @@ export default function Navbar() {
                     rounded-2xl
                     border
                     border-emerald-300/20
-                    bg-gradient-to-br
-                    from-emerald-300
-                    via-emerald-500
-                    to-cyan-500
                     text-slate-950
                     shadow-lg
-                    shadow-emerald-500/20
                     transition-all
                     duration-300
                     group-hover:scale-105
                     group-hover:rotate-2
                   "
+                  style={{
+                    background: `linear-gradient(to bottom right, var(--nav-accent), var(--nav-primary), var(--nav-secondary))`,
+                    boxShadow: `0 10px 15px -3px color-mix(in srgb, var(--nav-primary) 20%, transparent)`,
+                  }}
                 >
                   <Music2 className="relative z-10 h-5 w-5" />
                   <div
@@ -486,8 +560,8 @@ export default function Navbar() {
 
             {/* DESKTOP NAVIGATION */}
             <nav className="hidden items-center gap-1 xl:flex">
-              <Link to="/dashboard" className={navItemClass('/dashboard')}>
-                <LayoutDashboard className={getIconClass('/dashboard')} />
+              <Link to="/dashboard" className={navItemClass('/dashboard')} style={navItemStyle('/dashboard')}>
+                <LayoutDashboard className={getIconClass('/dashboard')} style={getIconStyle('/dashboard')} />
                 <span>Dashboard</span>
                 {isActive('/dashboard') && <ActiveIndicator />}
               </Link>
@@ -499,22 +573,22 @@ export default function Navbar() {
               </Link>
 
               {user.role !== 'admin' && (
-                <Link to="/artists" className={navItemClass('/artists')}>
-                  <Users className={getIconClass('/artists')} />
+                <Link to="/artists" className={navItemClass('/artists')} style={navItemStyle('/artists')}>
+                  <Users className={getIconClass('/artists')} style={getIconStyle('/artists')} />
                   <span>Artists</span>
                   {isActive('/artists') && <ActiveIndicator />}
                 </Link>
               )}
 
-              <Link to="/playlists" className={navItemClass('/playlists')}>
-                <ListMusic className={getIconClass('/playlists')} />
+              <Link to="/playlists" className={navItemClass('/playlists')} style={navItemStyle('/playlists')}>
+                <ListMusic className={getIconClass('/playlists')} style={getIconStyle('/playlists')} />
                 <span>Playlists</span>
                 {isActive('/playlists') && <ActiveIndicator />}
               </Link>
 
               {user.role !== 'admin' && (
-                <Link to="/notifications" className={navItemClass('/notifications')}>
-                  <Bell className={getIconClass('/notifications')} />
+                <Link to="/notifications" className={navItemClass('/notifications')} style={navItemStyle('/notifications')}>
+                  <Bell className={getIconClass('/notifications')} style={getIconStyle('/notifications')} />
                   <span>Notifications</span>
                   {isActive('/notifications') && <ActiveIndicator />}
                 </Link>
@@ -522,15 +596,15 @@ export default function Navbar() {
 
               {/* USER CONTACT LINK */}
               {user.role !== 'admin' && (
-                <Link to="/contact" className={navItemClass('/contact')}>
-                  <Send className={getIconClass('/contact')} />
+                <Link to="/contact" className={navItemClass('/contact')} style={navItemStyle('/contact')}>
+                  <Send className={getIconClass('/contact')} style={getIconStyle('/contact')} />
                   <span>Contact</span>
                   {isActive('/contact') && <ActiveIndicator />}
                 </Link>
               )}
 
-              <Link to="/profile" className={navItemClass('/profile')}>
-                <User className={getIconClass('/profile')} />
+              <Link to="/profile" className={navItemClass('/profile')} style={navItemStyle('/profile')}>
+                <User className={getIconClass('/profile')} style={getIconStyle('/profile')} />
                 <span>Profile</span>
                 {isActive('/profile') && <ActiveIndicator />}
               </Link>
@@ -574,77 +648,6 @@ export default function Navbar() {
               )}
 
               {/* SOCIAL CONNECTION */}
-              {user.role !== 'admin' && (
-                <div
-                  className="
-                    ml-1
-                    flex
-                    items-center
-                    gap-1
-                    border-l
-                    border-white/[0.06]
-                    pl-2
-                  "
-                >
-                  <a
-                    href="https://wa.me/917810828802"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Contact Admin on WhatsApp"
-                    className="
-                      flex
-                      h-9
-                      w-9
-                      items-center
-                      justify-center
-                      rounded-xl
-                      border
-                      border-emerald-500/15
-                      bg-emerald-500/[0.04]
-                      text-emerald-400
-                      transition-all
-                      duration-300
-                      hover:scale-105
-                      hover:border-emerald-400/30
-                      hover:bg-emerald-500/10
-                      hover:text-emerald-300
-                      hover:shadow-lg
-                      hover:shadow-emerald-500/10
-                    "
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </a>
-
-                  <a
-                    href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Follow Admin on Instagram"
-                    className="
-                      flex
-                      h-9
-                      w-9
-                      items-center
-                      justify-center
-                      rounded-xl
-                      border
-                      border-pink-500/15
-                      bg-pink-500/[0.04]
-                      text-pink-400
-                      transition-all
-                      duration-300
-                      hover:scale-105
-                      hover:border-pink-400/30
-                      hover:bg-pink-500/10
-                      hover:text-pink-300
-                      hover:shadow-lg
-                      hover:shadow-pink-500/10
-                    "
-                  >
-                    <Instagram className="h-4 w-4" />
-                  </a>
-                </div>
-              )}
             </nav>
 
             {/* RIGHT SIDE USER AVATAR & DROPDOWN */}
@@ -759,10 +762,10 @@ export default function Navbar() {
                       rounded-[22px]
                       border
                       border-white/[0.10]
-                      bg-slate-950/70
+                      bg-slate-950/90
                       shadow-2xl
                       shadow-black/60
-                      backdrop-blur-[35px]
+                      backdrop-blur-[48px]
                       backdrop-saturate-150
                     "
                   >
@@ -1006,32 +1009,6 @@ export default function Navbar() {
                       )}
                     </div>
 
-                    {user.role !== 'admin' && (
-                      <div className="border-t border-white/[0.06] p-2">
-                        <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">
-                          Connect with Admin
-                        </p>
-                        <a
-                          href="https://wa.me/917810828802"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-400 hover:bg-emerald-500/[0.08] hover:text-emerald-400 transition"
-                        >
-                          <MessageCircle className="h-4 w-4 text-emerald-400" />
-                          WhatsApp
-                        </a>
-                        <a
-                          href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-400 hover:bg-pink-500/[0.08] hover:text-pink-400 transition"
-                        >
-                          <Instagram className="h-4 w-4 text-pink-400" />
-                          Instagram
-                        </a>
-                      </div>
-                    )}
-
                     <div className="border-t border-white/[0.06] p-2">
                       <button
                         type="button"
@@ -1089,11 +1066,12 @@ export default function Navbar() {
                 relative
                 border-t
                 border-white/[0.07]
-                bg-slate-950/35
+                bg-slate-950/90
                 px-3
                 pb-3
                 pt-3
-                backdrop-blur-2xl
+                backdrop-blur-[40px]
+                backdrop-saturate-150
                 xl:hidden
               "
             >
@@ -1184,32 +1162,6 @@ export default function Navbar() {
                       </span>
                     )}
                   </Link>
-                )}
-
-                {user.role !== 'admin' && (
-                  <div className="mt-2 border-t border-white/[0.06] pt-2">
-                    <p className="px-4 py-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">
-                      Connect with Admin
-                    </p>
-                    <a
-                      href="https://wa.me/917810828802"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-emerald-500/[0.07] hover:text-emerald-400 transition"
-                    >
-                      <MessageCircle className="h-4 w-4 text-emerald-400" />
-                      WhatsApp
-                    </a>
-                    <a
-                      href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-2xl px-4 py-3 text-xs font-semibold text-slate-400 hover:bg-pink-500/[0.07] hover:text-pink-400 transition"
-                    >
-                      <Instagram className="h-4 w-4 text-pink-400" />
-                      Instagram
-                    </a>
-                  </div>
                 )}
               </nav>
             </div>

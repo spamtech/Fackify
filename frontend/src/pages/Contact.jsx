@@ -5,6 +5,8 @@ import {
   User,
   Phone,
   MessageSquare,
+  MessageCircle,
+  Instagram,
   AlertCircle,
   CheckCircle2,
   Headphones,
@@ -320,6 +322,70 @@ export default function Contact() {
                           Made for people who live through music.
                         </p>
                       </div>
+
+                    </div>
+
+                  </div>
+
+                  {/* Connect with Admin */}
+
+                  <div className="mt-7">
+
+                    <div className="text-xs uppercase tracking-[0.25em] font-bold text-slate-500 mb-3">
+                      Connect with admin
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+
+                      <a
+                        href="https://wa.me/917810828802"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-3 p-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.04] hover:bg-emerald-400/10 hover:border-emerald-400/30 transition"
+                      >
+
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-emerald-400/10 flex items-center justify-center group-hover:scale-105 transition">
+
+                          <MessageCircle className="w-5 h-5 text-emerald-400" />
+
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            WhatsApp
+                          </p>
+
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Chat directly
+                          </p>
+                        </div>
+
+                      </a>
+
+                      <a
+                        href="https://instagram.com/YOUR_INSTAGRAM_USERNAME"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-3 p-4 rounded-2xl border border-pink-400/15 bg-pink-400/[0.04] hover:bg-pink-400/10 hover:border-pink-400/30 transition"
+                      >
+
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-pink-400/10 flex items-center justify-center group-hover:scale-105 transition">
+
+                          <Instagram className="w-5 h-5 text-pink-400" />
+
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            Instagram
+                          </p>
+
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Follow along
+                          </p>
+                        </div>
+
+                      </a>
 
                     </div>
 
