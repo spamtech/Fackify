@@ -1,8 +1,9 @@
 import React, {
   useEffect,
-  useRef,
   useState,
 } from 'react';
+
+import { createPortal } from 'react-dom';
 
 import { usePlayer } from '../context/PlayerContext';
 
@@ -117,6 +118,403 @@ const getArtistName = (song) => {
 };
 
 /* =========================================================
+   PLAYLIST MENU (rendered outside the card, via portal)
+========================================================= */
+
+function PlaylistMenuPortal({
+  song,
+  anchor,
+  playlists,
+  isSongInPlaylist,
+  onToggle,
+  onClose,
+}) {
+  /* =========================================================
+     CLOSE ON ESCAPE
+  ========================================================= */
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      document.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [onClose]);
+
+  /* =========================================================
+     CLOSE ON SCROLL / RESIZE
+     (anchor position would otherwise go stale)
+  ========================================================= */
+
+  useEffect(() => {
+    const handleReposition = () => onClose();
+
+    window.addEventListener(
+      'scroll',
+      handleReposition,
+      true
+    );
+
+    window.addEventListener(
+      'resize',
+      handleReposition
+    );
+
+    return () => {
+      window.removeEventListener(
+        'scroll',
+        handleReposition,
+        true
+      );
+
+      window.removeEventListener(
+        'resize',
+        handleReposition
+      );
+    };
+  }, [onClose]);
+
+  const isMobileLayout =
+    anchor?.isMobileLayout;
+
+  const menuContent = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add to playlist"
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+      style={
+        isMobileLayout
+          ? {
+              bottom:
+                'max(16px, env(safe-area-inset-bottom))',
+            }
+          : {
+              top: anchor.top,
+              left: anchor.left,
+            }
+      }
+      className={`
+        z-[201]
+        flex
+        w-72
+        max-w-[calc(100vw-24px)]
+        flex-col
+        overflow-hidden
+        rounded-2xl
+        border
+        border-slate-700/80
+        bg-slate-950/95
+        shadow-2xl
+        shadow-black/60
+        backdrop-blur-2xl
+
+        ${
+          isMobileLayout
+            ? `
+              fixed
+              left-1/2
+              max-h-[75vh]
+              w-[calc(100vw-24px)]
+              -translate-x-1/2
+              animate-[playlistSheetIn_0.25s_ease-out]
+            `
+            : `
+              fixed
+              max-h-[70vh]
+              animate-[playlistPopIn_0.18s_ease-out]
+            `
+        }
+      `}
+    >
+      {/* Drag-handle affordance (mobile only) */}
+
+      {isMobileLayout && (
+        <div className="flex shrink-0 justify-center pb-1 pt-2.5">
+          <span className="h-1 w-9 rounded-full bg-slate-700" />
+        </div>
+      )}
+
+      {/* Header */}
+
+      <div
+        className="
+          flex
+          shrink-0
+          items-center
+          justify-between
+          gap-3
+          border-b
+          border-slate-800
+          bg-slate-900/50
+          px-4
+          py-3
+        "
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="
+              flex
+              h-9
+              w-9
+              shrink-0
+              items-center
+              justify-center
+              rounded-xl
+              bg-emerald-500/10
+              text-emerald-400
+            "
+          >
+            <ListMusic className="h-4 w-4" />
+          </div>
+
+          <div className="min-w-0">
+            <p
+              className="
+                truncate
+                text-xs
+                font-bold
+                text-white
+              "
+            >
+              Add to playlist
+            </p>
+
+            <p
+              title={song?.title}
+              className="
+                mt-0.5
+                truncate
+                text-[10px]
+                text-slate-500
+              "
+            >
+              {song?.title || 'Save this song for later'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="
+            flex
+            h-8
+            w-8
+            shrink-0
+            items-center
+            justify-center
+            rounded-lg
+            text-slate-500
+            transition-all
+            hover:bg-slate-800
+            hover:text-white
+            active:scale-90
+          "
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Playlists */}
+
+      <div
+        className="
+          min-h-0
+          flex-1
+          overflow-y-auto
+          p-2
+        "
+      >
+        {playlists.length === 0 ? (
+          <div
+            className="
+              px-4
+              py-8
+              text-center
+            "
+          >
+            <div
+              className="
+                mx-auto
+                flex
+                h-11
+                w-11
+                items-center
+                justify-center
+                rounded-2xl
+                bg-slate-900
+                text-slate-700
+              "
+            >
+              <ListMusic className="h-5 w-5" />
+            </div>
+
+            <p
+              className="
+                mt-3
+                text-xs
+                font-semibold
+                text-slate-400
+              "
+            >
+              No playlists yet
+            </p>
+
+            <p
+              className="
+                mt-1
+                text-[10px]
+                leading-4
+                text-slate-600
+              "
+            >
+              Create a playlist first.
+            </p>
+          </div>
+        ) : (
+          playlists.map((playlist) => {
+            const added =
+              isSongInPlaylist(playlist);
+
+            return (
+              <button
+                key={playlist.id}
+                type="button"
+                onClick={() =>
+                  onToggle(playlist)
+                }
+                className="
+                  flex
+                  w-full
+                  items-center
+                  gap-3
+                  rounded-xl
+                  px-3
+                  py-2.5
+                  text-left
+                  transition-all
+                  hover:bg-slate-800
+                "
+              >
+                <div
+                  className={`
+                    flex
+                    h-9
+                    w-9
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-xl
+
+                    ${
+                      added
+                        ? `
+                          bg-emerald-500/15
+                          text-emerald-400
+                        `
+                        : `
+                          bg-slate-800
+                          text-slate-500
+                        `
+                    }
+                  `}
+                >
+                  {added ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <ListMusic className="h-4 w-4" />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="
+                      truncate
+                      text-xs
+                      font-semibold
+                      text-slate-200
+                    "
+                  >
+                    {playlist.name}
+                  </p>
+
+                  <p
+                    className="
+                      mt-0.5
+                      text-[10px]
+                      text-slate-500
+                    "
+                  >
+                    {playlist.songs?.length || 0}{' '}
+                    songs
+                  </p>
+                </div>
+
+                {added && (
+                  <span
+                    className="
+                      rounded-full
+                      bg-emerald-500/10
+                      px-2
+                      py-1
+                      text-[8px]
+                      font-bold
+                      uppercase
+                      tracking-wider
+                      text-emerald-400
+                    "
+                  >
+                    Added
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  return createPortal(
+    <>
+      {/* Backdrop — click anywhere outside the menu to close it */}
+
+      <div
+        className="
+          fixed
+          inset-0
+          z-[200]
+          bg-slate-950/40
+          backdrop-blur-[2px]
+          animate-[playlistBackdropIn_0.18s_ease-out]
+        "
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {menuContent}
+    </>,
+    document.body
+  );
+}
+
+/* =========================================================
    SONG CARD
 ========================================================= */
 
@@ -164,7 +562,10 @@ export default function SongCard({
     setQueueAdded,
   ] = useState(false);
 
-  const menuRef = useRef(null);
+  const [
+    menuAnchor,
+    setMenuAnchor,
+  ] = useState(null);
 
   /* =========================================================
      ACTIVE
@@ -194,38 +595,99 @@ export default function SongCard({
     );
 
   /* =========================================================
-     CLOSE MENU OUTSIDE
+     PLAYLIST MENU POSITIONING
+     The menu itself renders outside the card (via a portal
+     to document.body), so we just need to know where the
+     trigger button sits on screen.
   ========================================================= */
 
-  useEffect(() => {
-    const handleClickOutside =
-      (event) => {
-        if (
-          menuRef.current &&
-          !menuRef.current.contains(
-            event.target
-          )
-        ) {
-          setShowPlaylistMenu(
-            false
-          );
-        }
-      };
+  const MENU_WIDTH = 288;
 
-    if (showPlaylistMenu) {
-      document.addEventListener(
-        'mousedown',
-        handleClickOutside
+  const computeMenuAnchor = (
+    triggerElement
+  ) => {
+    if (!triggerElement) {
+      return null;
+    }
+
+    const isMobileLayout =
+      window.innerWidth < 640;
+
+    if (isMobileLayout) {
+      return { isMobileLayout: true };
+    }
+
+    const rect =
+      triggerElement.getBoundingClientRect();
+
+    let left = rect.right - MENU_WIDTH;
+
+    left = Math.max(
+      12,
+      Math.min(
+        left,
+        window.innerWidth -
+          MENU_WIDTH -
+          12
+      )
+    );
+
+    const estimatedMenuHeight = 320;
+
+    let top = rect.bottom + 8;
+
+    if (
+      top + estimatedMenuHeight >
+      window.innerHeight - 12
+    ) {
+      top = Math.max(
+        12,
+        rect.top -
+          estimatedMenuHeight -
+          8
       );
     }
 
-    return () => {
-      document.removeEventListener(
-        'mousedown',
-        handleClickOutside
-      );
-    };
-  }, [showPlaylistMenu]);
+    return { top, left, isMobileLayout: false };
+  };
+
+  const handleOpenPlaylistMenu = (
+    event
+  ) => {
+    event.stopPropagation();
+
+    setMenuAnchor(
+      computeMenuAnchor(
+        event.currentTarget
+      )
+    );
+
+    setShowPlaylistMenu(true);
+  };
+
+  const handleTogglePlaylistMenu = (
+    event
+  ) => {
+    event.stopPropagation();
+
+    if (showPlaylistMenu) {
+      setShowPlaylistMenu(false);
+
+      return;
+    }
+
+    setMenuAnchor(
+      computeMenuAnchor(
+        event.currentTarget
+      )
+    );
+
+    setShowPlaylistMenu(true);
+  };
+
+  const handleClosePlaylistMenu = () => {
+    setShowPlaylistMenu(false);
+  };
 
   /* =========================================================
      PLAYLIST CHECK
@@ -333,6 +795,7 @@ export default function SongCard({
   };
 
   return (
+    <>
     <article
       className={`
         group
@@ -612,11 +1075,14 @@ export default function SongCard({
         <div
           className="
             absolute
-            right-3
-            top-3
+            right-2.5
+            top-2.5
             flex
             items-center
-            gap-2
+            gap-1.5
+            sm:right-3
+            sm:top-3
+            sm:gap-2
           "
         >
           {/* LIKE */}
@@ -634,8 +1100,8 @@ export default function SongCard({
               }
               className={`
                 flex
-                h-9
-                w-9
+                h-8
+                w-8
                 items-center
                 justify-center
                 rounded-full
@@ -646,6 +1112,8 @@ export default function SongCard({
                 transition-all
                 duration-300
                 active:scale-90
+                sm:h-9
+                sm:w-9
 
                 ${
                   song.is_liked
@@ -658,8 +1126,9 @@ export default function SongCard({
                     : `
                       border-white/10
                       text-slate-300
-                      opacity-0
-                      group-hover:opacity-100
+                      opacity-100
+                      sm:opacity-0
+                      sm:group-hover:opacity-100
                       hover:border-rose-400/20
                       hover:bg-rose-500/10
                       hover:text-rose-400
@@ -670,8 +1139,8 @@ export default function SongCard({
             >
               <Heart
                 className={`
-                  h-4
-                  w-4
+                  h-3.5
+                  w-3.5
                   ${
                     song.is_liked
                       ? `
@@ -708,8 +1177,8 @@ export default function SongCard({
             }
             className={`
               flex
-              h-9
-              w-9
+              h-8
+              w-8
               items-center
               justify-center
               rounded-full
@@ -719,6 +1188,8 @@ export default function SongCard({
               transition-all
               duration-300
               active:scale-90
+              sm:h-9
+              sm:w-9
 
               ${
                 queued ||
@@ -733,8 +1204,9 @@ export default function SongCard({
                     border-white/10
                     bg-slate-950/75
                     text-slate-300
-                    opacity-0
-                    group-hover:opacity-100
+                    opacity-100
+                    sm:opacity-0
+                    sm:group-hover:opacity-100
                     hover:scale-110
                     hover:border-cyan-400/30
                     hover:bg-cyan-500/10
@@ -755,24 +1227,20 @@ export default function SongCard({
               PLAYLIST
           ================================================= */}
 
-          <div
-            ref={menuRef}
-            className="relative"
-          >
+          <div className="relative">
             <button
               type="button"
-              onClick={() =>
-                setShowPlaylistMenu(
-                  (previous) =>
-                    !previous
-                )
+              onClick={
+                handleTogglePlaylistMenu
               }
               aria-label="Add to playlist"
+              aria-haspopup="dialog"
+              aria-expanded={showPlaylistMenu}
               title="Add to playlist"
               className={`
                 flex
-                h-9
-                w-9
+                h-8
+                w-8
                 items-center
                 justify-center
                 rounded-full
@@ -784,6 +1252,8 @@ export default function SongCard({
                 transition-all
                 duration-300
                 active:scale-90
+                sm:h-9
+                sm:w-9
 
                 ${
                   showPlaylistMenu
@@ -795,8 +1265,9 @@ export default function SongCard({
                     `
                     : `
                       border-white/10
-                      opacity-0
-                      group-hover:opacity-100
+                      opacity-100
+                      sm:opacity-0
+                      sm:group-hover:opacity-100
                       hover:scale-110
                       hover:border-emerald-400/30
                       hover:bg-emerald-500
@@ -812,255 +1283,6 @@ export default function SongCard({
               )}
             </button>
 
-            {/* =================================================
-                PLAYLIST MENU
-            ================================================= */}
-
-            {showPlaylistMenu && (
-              <div
-                className="
-                  absolute
-                  right-0
-                  top-11
-                  z-[100]
-                  w-64
-                  overflow-hidden
-                  rounded-2xl
-                  border
-                  border-slate-700/80
-                  bg-slate-950/95
-                  shadow-2xl
-                  shadow-black/60
-                  backdrop-blur-2xl
-                "
-              >
-                {/* Header */}
-
-                <div
-                  className="
-                    border-b
-                    border-slate-800
-                    bg-slate-900/50
-                    px-4
-                    py-3
-                  "
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="
-                        flex
-                        h-9
-                        w-9
-                        items-center
-                        justify-center
-                        rounded-xl
-                        bg-emerald-500/10
-                        text-emerald-400
-                      "
-                    >
-                      <ListMusic className="h-4 w-4" />
-                    </div>
-
-                    <div>
-                      <p
-                        className="
-                          text-xs
-                          font-bold
-                          text-white
-                        "
-                      >
-                        Add to playlist
-                      </p>
-
-                      <p
-                        className="
-                          mt-0.5
-                          text-[10px]
-                          text-slate-500
-                        "
-                      >
-                        Save this song
-                        for later
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Playlists */}
-
-                <div
-                  className="
-                    max-h-64
-                    overflow-y-auto
-                    p-2
-                  "
-                >
-                  {playlists.length ===
-                  0 ? (
-                    <div
-                      className="
-                        px-4
-                        py-8
-                        text-center
-                      "
-                    >
-                      <div
-                        className="
-                          mx-auto
-                          flex
-                          h-11
-                          w-11
-                          items-center
-                          justify-center
-                          rounded-2xl
-                          bg-slate-900
-                          text-slate-700
-                        "
-                      >
-                        <ListMusic className="h-5 w-5" />
-                      </div>
-
-                      <p
-                        className="
-                          mt-3
-                          text-xs
-                          font-semibold
-                          text-slate-400
-                        "
-                      >
-                        No playlists yet
-                      </p>
-
-                      <p
-                        className="
-                          mt-1
-                          text-[10px]
-                          leading-4
-                          text-slate-600
-                        "
-                      >
-                        Create a playlist
-                        first.
-                      </p>
-                    </div>
-                  ) : (
-                    playlists.map(
-                      (playlist) => {
-                        const added =
-                          isSongInPlaylist(
-                            playlist
-                          );
-
-                        return (
-                          <button
-                            key={
-                              playlist.id
-                            }
-                            type="button"
-                            onClick={() =>
-                              handlePlaylistToggle(
-                                playlist
-                              )
-                            }
-                            className="
-                              flex
-                              w-full
-                              items-center
-                              gap-3
-                              rounded-xl
-                              px-3
-                              py-2.5
-                              text-left
-                              transition-all
-                              hover:bg-slate-800
-                            "
-                          >
-                            <div
-                              className={`
-                                flex
-                                h-9
-                                w-9
-                                shrink-0
-                                items-center
-                                justify-center
-                                rounded-xl
-
-                                ${
-                                  added
-                                    ? `
-                                      bg-emerald-500/15
-                                      text-emerald-400
-                                    `
-                                    : `
-                                      bg-slate-800
-                                      text-slate-500
-                                    `
-                                }
-                              `}
-                            >
-                              {added ? (
-                                <Check className="h-4 w-4" />
-                              ) : (
-                                <ListMusic className="h-4 w-4" />
-                              )}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="
-                                  truncate
-                                  text-xs
-                                  font-semibold
-                                  text-slate-200
-                                "
-                              >
-                                {
-                                  playlist.name
-                                }
-                              </p>
-
-                              <p
-                                className="
-                                  mt-0.5
-                                  text-[10px]
-                                  text-slate-500
-                                "
-                              >
-                                {
-                                  playlist
-                                    .songs
-                                    ?.length ||
-                                  0
-                                }{' '}
-                                songs
-                              </p>
-                            </div>
-
-                            {added && (
-                              <span
-                                className="
-                                  rounded-full
-                                  bg-emerald-500/10
-                                  px-2
-                                  py-1
-                                  text-[8px]
-                                  font-bold
-                                  uppercase
-                                  tracking-wider
-                                  text-emerald-400
-                                "
-                              >
-                                Added
-                              </span>
-                            )}
-                          </button>
-                        );
-                      }
-                    )
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1103,10 +1325,11 @@ export default function SongCard({
                   opacity-100
                 `
                 : `
-                  translate-y-3
-                  opacity-0
-                  group-hover:translate-y-0
-                  group-hover:opacity-100
+                  opacity-100
+                  sm:translate-y-3
+                  sm:opacity-0
+                  sm:group-hover:translate-y-0
+                  sm:group-hover:opacity-100
                 `
             }
 
@@ -1239,6 +1462,11 @@ export default function SongCard({
               handleAddToQueue
             }
             disabled={queued}
+            aria-label={
+              queued
+                ? 'Already queued'
+                : 'Add to queue'
+            }
             title={
               queued
                 ? 'Already queued'
@@ -1246,14 +1474,20 @@ export default function SongCard({
             }
             className={`
               flex
+              min-h-[32px]
+              min-w-[32px]
               items-center
+              justify-center
               gap-1.5
               rounded-lg
-              px-2
+              px-1.5
               py-1
               text-[10px]
               font-semibold
               transition-all
+              sm:min-w-0
+              sm:justify-start
+              sm:px-2
 
               ${
                 queued
@@ -1275,26 +1509,33 @@ export default function SongCard({
               <ListPlus className="h-3.5 w-3.5" />
             )}
 
-            {queued
-              ? 'Queued'
-              : 'Queue'}
+            <span className="hidden sm:inline">
+              {queued
+                ? 'Queued'
+                : 'Queue'}
+            </span>
           </button>
 
           {/* PLAYLIST */}
 
           <button
             type="button"
-            onClick={() =>
-              setShowPlaylistMenu(
-                true
-              )
+            onClick={
+              handleOpenPlaylistMenu
             }
+            aria-label="Add to playlist"
+            aria-haspopup="dialog"
+            aria-expanded={showPlaylistMenu}
+            title="Add to playlist"
             className="
               flex
+              min-h-[32px]
+              min-w-[32px]
               items-center
+              justify-center
               gap-1.5
               rounded-lg
-              px-2
+              px-1.5
               py-1
               text-[10px]
               font-semibold
@@ -1302,11 +1543,16 @@ export default function SongCard({
               transition-all
               hover:bg-emerald-500/10
               hover:text-emerald-400
+              sm:min-w-0
+              sm:justify-start
+              sm:px-2
             "
           >
             <Plus className="h-3.5 w-3.5" />
 
-            Playlist
+            <span className="hidden sm:inline">
+              Playlist
+            </span>
           </button>
 
           {/* ADMIN */}
@@ -1429,7 +1675,75 @@ export default function SongCard({
             transform: scaleY(1);
           }
         }
+
+        @keyframes playlistBackdropIn {
+          0% {
+            opacity: 0;
+          }
+
+          100% {
+            opacity: 1;
+          }
+        }
+
+        @keyframes playlistPopIn {
+          0% {
+            opacity: 0;
+            transform: translateY(-6px) scale(0.97);
+          }
+
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes playlistSheetIn {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, 16px);
+          }
+
+          100% {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
       `}</style>
     </article>
+
+    {/* =======================================================
+        PLAYLIST MENU — rendered outside the card via portal
+    ======================================================= */}
+
+    {showPlaylistMenu &&
+      menuAnchor &&
+      (
+        <PlaylistMenuPortal
+          song={song}
+          anchor={menuAnchor}
+          playlists={playlists}
+          isSongInPlaylist={
+            isSongInPlaylist
+          }
+          onToggle={
+            handlePlaylistToggle
+          }
+          onClose={
+            handleClosePlaylistMenu
+          }
+        />
+      )}
+    </>
   );
 }

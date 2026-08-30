@@ -87,6 +87,95 @@ const ROMANTIC_CAPTIONS = [
 ];
 
 /* ============================================================
+   COUNT UP (small stat-reveal animation)
+============================================================ */
+
+function useCountUp(target, duration = 900) {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    const safeTarget = Number(target) || 0;
+
+    let frame;
+
+    const start = performance.now();
+
+    const startValue = 0;
+
+    const tick = (now) => {
+      const progress = Math.min(
+        1,
+        (now - start) / duration
+      );
+
+      const eased =
+        1 - Math.pow(1 - progress, 3);
+
+      setValue(
+        Math.round(
+          startValue +
+            (safeTarget - startValue) * eased
+        )
+      );
+
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+
+    frame = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+
+  return value;
+}
+
+/* ============================================================
+   EQUALIZER (hero signature element)
+============================================================ */
+
+function Equalizer({ bars = 24, className = '' }) {
+  const heights = useMemo(
+    () =>
+      Array.from(
+        { length: bars },
+        () => 18 + Math.round(Math.random() * 64)
+      ),
+    [bars]
+  );
+
+  return (
+    <div
+      className={`pointer-events-none flex h-full items-end gap-[3px] ${className}`}
+    >
+      {heights.map((height, index) => (
+        <span
+          key={index}
+          className="
+            w-[3px]
+            shrink-0
+            rounded-full
+            bg-gradient-to-t
+            from-emerald-500/70
+            via-teal-300/60
+            to-cyan-300/20
+            [animation:eqBar_ease-in-out_infinite]
+          "
+          style={{
+            height: `${height}%`,
+            animationDuration: `${
+              1.1 + (index % 6) * 0.18
+            }s`,
+            animationDelay: `${(index % 8) * 0.09}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
    SKELETON CARD
 ============================================================ */
 
@@ -660,6 +749,16 @@ export default function Dashboard() {
   }, [allSongs]);
 
   /* ==========================================================
+     ANIMATED STAT COUNTERS
+  ========================================================== */
+
+  const totalTracksCount = useCountUp(
+    allSongs.length
+  );
+
+  const totalLikesCount = useCountUp(totalLikes);
+
+  /* ==========================================================
      CURRENT PLATFORM LABEL
   ========================================================== */
 
@@ -968,6 +1067,7 @@ export default function Dashboard() {
                       uppercase
                       tracking-[0.18em]
                       text-emerald-400
+                      [animation:badgeGlow_2.6s_ease-in-out_infinite]
                     "
                   >
                     <Waves className="h-3.5 w-3.5" />
@@ -1014,19 +1114,38 @@ export default function Dashboard() {
 
                   <span
                     className="
+                      relative
                       block
                       bg-gradient-to-r
                       from-emerald-400
                       via-teal-300
                       to-cyan-400
+                      bg-[length:200%_auto]
                       bg-clip-text
                       pb-1
                       text-transparent
+                      [animation:gradientShift_6s_ease-in-out_infinite]
                     "
                   >
                     music universe.
                   </span>
                 </h1>
+
+                {/* SIGNATURE: live equalizer strip, mirrors the caption's heartbeat */}
+
+                <div
+                  className="
+                    mt-4
+                    hidden
+                    h-8
+                    w-40
+                    opacity-70
+                    sm:block
+                  "
+                  aria-hidden="true"
+                >
+                  <Equalizer bars={28} />
+                </div>
 
                 <div
                   key={captionIndex}
@@ -1167,7 +1286,7 @@ export default function Dashboard() {
 
                     <div>
                       <p className="text-lg font-bold text-white">
-                        {allSongs.length}
+                        {totalTracksCount}
                       </p>
 
                       <p className="text-[9px] uppercase tracking-wider text-slate-600">
@@ -1210,7 +1329,7 @@ export default function Dashboard() {
 
                     <div>
                       <p className="text-lg font-bold text-white">
-                        {totalLikes}
+                        {totalLikesCount}
                       </p>
 
                       <p className="text-[9px] uppercase tracking-wider text-slate-600">
@@ -1511,40 +1630,60 @@ export default function Dashboard() {
               lg:grid-cols-4
             "
           >
-            <QuickActionCard
-              icon={Heart}
-              title="Liked Songs"
-              description={`${likedSongsCount} tracks you've liked`}
-              accent="rose"
-              active={libraryView === 'liked'}
-              onClick={handleLikedClick}
-            />
+            <div
+              className="animate-[cardIn_0.45s_ease-out_both]"
+              style={{ animationDelay: '0ms' }}
+            >
+              <QuickActionCard
+                icon={Heart}
+                title="Liked Songs"
+                description={`${likedSongsCount} tracks you've liked`}
+                accent="rose"
+                active={libraryView === 'liked'}
+                onClick={handleLikedClick}
+              />
+            </div>
 
-            <QuickActionCard
-              icon={Clock3}
-              title="Latest Uploads"
-              description="Explore the newest tracks"
-              accent="emerald"
-              active={libraryView === 'latest'}
-              onClick={handleLatestClick}
-            />
+            <div
+              className="animate-[cardIn_0.45s_ease-out_both]"
+              style={{ animationDelay: '60ms' }}
+            >
+              <QuickActionCard
+                icon={Clock3}
+                title="Latest Uploads"
+                description="Explore the newest tracks"
+                accent="emerald"
+                active={libraryView === 'latest'}
+                onClick={handleLatestClick}
+              />
+            </div>
 
-            <QuickActionCard
-              icon={Archive}
-              title="Khazana"
-              description={`${khazanaSongs.length} older tracks`}
-              accent="cyan"
-              active={libraryView === 'khazana'}
-              onClick={handleKhazanaClick}
-            />
+            <div
+              className="animate-[cardIn_0.45s_ease-out_both]"
+              style={{ animationDelay: '120ms' }}
+            >
+              <QuickActionCard
+                icon={Archive}
+                title="Khazana"
+                description={`${khazanaSongs.length} older tracks`}
+                accent="cyan"
+                active={libraryView === 'khazana'}
+                onClick={handleKhazanaClick}
+              />
+            </div>
 
-            <QuickActionCard
-              icon={Sparkles}
-              title="Discover"
-              description="Find something new"
-              accent="purple"
-              onClick={handleDiscoverClick}
-            />
+            <div
+              className="animate-[cardIn_0.45s_ease-out_both]"
+              style={{ animationDelay: '180ms' }}
+            >
+              <QuickActionCard
+                icon={Sparkles}
+                title="Discover"
+                description="Find something new"
+                accent="purple"
+                onClick={handleDiscoverClick}
+              />
+            </div>
           </div>
         </section>
 
@@ -1719,6 +1858,9 @@ export default function Dashboard() {
 
                   <span
                     className="
+                      inline-flex
+                      items-center
+                      gap-1.5
                       text-[10px]
                       font-bold
                       uppercase
@@ -1727,6 +1869,10 @@ export default function Dashboard() {
                     "
                   >
                     Trending now
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-orange-400" />
+                    </span>
                   </span>
                 </div>
 
@@ -1786,7 +1932,7 @@ export default function Dashboard() {
                     }}
                   >
                     <div
-                      className="
+                      className={`
                         pointer-events-none
                         absolute
                         left-2
@@ -1799,15 +1945,21 @@ export default function Dashboard() {
                         justify-center
                         rounded-lg
                         border
-                        border-white/10
-                        bg-slate-950/80
                         px-1.5
                         text-[9px]
                         font-black
-                        text-orange-400
                         shadow-xl
                         backdrop-blur-xl
-                      "
+                        ${
+                          index === 0
+                            ? 'border-amber-300/40 bg-gradient-to-br from-amber-300 to-yellow-500 text-slate-950 shadow-amber-500/30'
+                            : index === 1
+                            ? 'border-slate-300/30 bg-gradient-to-br from-slate-200 to-slate-400 text-slate-950 shadow-slate-400/20'
+                            : index === 2
+                            ? 'border-orange-400/30 bg-gradient-to-br from-orange-300 to-orange-600 text-slate-950 shadow-orange-500/20'
+                            : 'border-white/10 bg-slate-950/80 text-orange-400'
+                        }
+                      `}
                     >
                       #{index + 1}
                     </div>
@@ -2693,6 +2845,51 @@ export default function Dashboard() {
 
           50% {
             transform: translate3d(20px, 15px, 0);
+          }
+        }
+
+        @keyframes eqBar {
+          0%,
+          100% {
+            transform: scaleY(0.35);
+            opacity: 0.55;
+          }
+
+          50% {
+            transform: scaleY(1);
+            opacity: 1;
+          }
+        }
+
+        @keyframes gradientShift {
+          0%,
+          100% {
+            background-position: 0% 50%;
+          }
+
+          50% {
+            background-position: 100% 50%;
+          }
+        }
+
+        @keyframes badgeGlow {
+          0%,
+          100% {
+            box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.25);
+          }
+
+          50% {
+            box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
           }
         }
 

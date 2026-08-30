@@ -216,7 +216,7 @@ export default function App() {
 
                   <div className="flex items-center gap-2">
 
-                    <span className="text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 bg-clip-text text-transparent">
+                    <span className="text-lg font-black tracking-tight bg-gradient-to-r from-green-400 via-green-400 to-green-500 bg-clip-text text-transparent">
                       Fackify
                     </span>
 
@@ -244,7 +244,7 @@ export default function App() {
                     Created by{' '}
 
                     <span className="font-semibold text-slate-200">
-                      Dipnarayan Ghosh
+                      NodeMon
                     </span>
 
                   </div>
